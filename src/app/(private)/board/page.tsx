@@ -84,55 +84,64 @@ function TaskCardContent({
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
 }) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const authorName = task.profiles?.display_name ?? '알 수 없음'
   const authorInitials = authorName.slice(0, 1).toUpperCase()
 
   return (
-    <Card className="gap-3 py-3 shadow-sm">
-      <CardHeader className="px-3 py-0">
+    <Card
+      className="gap-1 py-2 shadow-sm !bg-white/40 dark:!bg-black/40 backdrop-blur-md border-white/20 cursor-pointer overflow-hidden transition-all"
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      <CardHeader className="px-3 py-0 mb-[-4px]">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-sm leading-snug">{task.title}</CardTitle>
-          <div className="flex shrink-0 gap-0.5">
+          <CardTitle className="text-sm font-medium leading-none mt-1.5">{task.title}</CardTitle>
+          <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
             <Button
               variant="ghost"
               size="icon"
-              className="size-7"
+              className="size-6"
               onClick={(e) => {
                 e.stopPropagation()
                 onEdit(task)
               }}
             >
-              <Pencil className="size-3.5" />
+              <Pencil className="size-3" />
             </Button>
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 text-destructive hover:text-destructive"
+              className="size-6 text-destructive hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation()
                 onDelete(task.id)
               }}
             >
-              <Trash2 className="size-3.5" />
+              <Trash2 className="size-3" />
             </Button>
           </div>
         </div>
       </CardHeader>
+
+      {task.description && (
+        <div className="mx-3 border-t border-black/[0.05] dark:border-white/10" />
+      )}
+
       <CardContent className="px-3 py-0">
         {task.description && (
-          <p className="text-muted-foreground mb-2 line-clamp-2 text-xs">
+          <p className={`text-muted-foreground mt-1 mb-1.5 text-[11px] leading-relaxed transition-all ${isExpanded ? '' : 'line-clamp-1'}`}>
             {task.description}
           </p>
         )}
         <div className="flex items-center justify-between gap-2">
-          <Badge variant={PRIORITY_VARIANT[task.priority]}>
+          <Badge variant={PRIORITY_VARIANT[task.priority]} className="h-4.5 px-1.5 text-[10px]">
             {TASK_PRIORITY_LABELS[task.priority]}
           </Badge>
-          <div className="flex items-center gap-1.5">
-            <Avatar size="sm" className="size-5">
-              <AvatarFallback className="text-[10px]">{authorInitials}</AvatarFallback>
+          <div className="flex items-center gap-1">
+            <Avatar size="sm" className="size-4">
+              <AvatarFallback className="text-[8px]">{authorInitials}</AvatarFallback>
             </Avatar>
-            <span className="text-muted-foreground truncate text-xs max-w-[80px]">
+            <span className="text-muted-foreground truncate text-[10px] max-w-[60px]">
               {authorName}
             </span>
           </div>
@@ -163,17 +172,14 @@ function DraggableTaskCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative">
-      <div
-        {...listeners}
-        {...attributes}
-        className="absolute top-3 left-1 z-10 cursor-grab p-1 active:cursor-grabbing"
-      >
-        <GripVertical className="text-muted-foreground size-3.5" />
-      </div>
-      <div className="pl-5">
-        <TaskCardContent task={task} onEdit={onEdit} onDelete={onDelete} />
-      </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className="relative cursor-grab active:cursor-grabbing"
+    >
+      <TaskCardContent task={task} onEdit={onEdit} onDelete={onDelete} />
     </div>
   )
 }
@@ -202,9 +208,8 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[200px] flex-1 flex-col rounded-xl border p-3 transition-colors ${colors.bg} ${colors.border} ${
-        isOver ? 'ring-2 ring-primary/30 border-primary/50' : ''
-      }`}
+      className={`flex min-h-[200px] flex-col rounded-xl border p-3 transition-colors ${colors.bg} ${colors.border} ${isOver ? 'ring-2 ring-primary/30 border-primary/50' : ''
+        }`}
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -224,7 +229,7 @@ function DroppableColumn({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1">
         <div className="flex flex-col gap-2">
           {tasks.map((task) => (
             <DraggableTaskCard
@@ -235,7 +240,7 @@ function DroppableColumn({
             />
           ))}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -524,7 +529,7 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-6">
+    <div className="flex min-h-full flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -539,7 +544,7 @@ export default function BoardPage() {
 
       {/* Board */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-x-auto md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 items-start md:grid-cols-3">
           {BOARD_COLUMNS.map((column) => (
             <DroppableColumn
               key={column.id}
@@ -557,8 +562,8 @@ export default function BoardPage() {
             <div className="w-72 rotate-2 opacity-90">
               <TaskCardContent
                 task={activeTask}
-                onEdit={() => {}}
-                onDelete={() => {}}
+                onEdit={() => { }}
+                onDelete={() => { }}
               />
             </div>
           ) : null}
