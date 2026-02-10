@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2 } from 'lucide-react'
+import { Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -195,26 +195,30 @@ export default function PortfolioPage() {
   )
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 flex-1 overflow-y-auto">
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">포트폴리오</h1>
-          <p className="text-sm text-muted-foreground">영상 포트폴리오를 관리합니다.</p>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">포트폴리오</h1>
+          <p className="text-xs md:text-sm text-muted-foreground">영상 포트폴리오를 관리합니다.</p>
         </div>
-        <Button onClick={openCreateDialog}><Plus />새 영상</Button>
+        <Button size="sm" className="md:h-9 md:px-4 md:text-sm" onClick={openCreateDialog}><Plus />새 영상</Button>
       </div>
 
-      {members.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <Users className="size-4 text-muted-foreground" />
-          <Badge variant={activeUser === null ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActiveUser(null)}>전체</Badge>
-          {members.map((member) => (
-            <Badge key={member.id} variant={activeUser === member.id ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActiveUser(activeUser === member.id ? null : member.id)}>
-              {member.display_name}
-            </Badge>
-          ))}
-        </div>
-      )}
+      {members.length > 0 && (() => {
+        const creatorsWithItems = new Set(items.map((item) => item.created_by))
+        const activeMembers = members.filter((m) => creatorsWithItems.has(m.id))
+        return activeMembers.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Users className="size-4 text-muted-foreground" />
+            <Badge variant={activeUser === null ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActiveUser(null)}>전체</Badge>
+            {activeMembers.map((member) => (
+              <Badge key={member.id} variant={activeUser === member.id ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActiveUser(activeUser === member.id ? null : member.id)}>
+                {member.display_name}
+              </Badge>
+            ))}
+          </div>
+        ) : null
+      })()}
 
       {allTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
@@ -299,7 +303,10 @@ export default function PortfolioPage() {
                           {item.profiles.display_name.slice(0, 1).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-[11px] text-muted-foreground">{item.profiles.display_name}</span>
+                      <span className="text-[11px] text-muted-foreground flex items-center gap-0.5">
+                        {item.profiles.display_name}
+                        {item.profiles.role === 'master' && <Crown className="size-2.5 text-yellow-500" />}
+                      </span>
                     </div>
                   )
                 })()}

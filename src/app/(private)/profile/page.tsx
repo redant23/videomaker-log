@@ -94,7 +94,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-6">
+    <div className="mx-auto w-full max-w-2xl space-y-6 flex-1 overflow-y-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">내 정보</h1>
         <p className="text-muted-foreground text-sm mt-1">프로필과 계정 설정을 관리합니다.</p>

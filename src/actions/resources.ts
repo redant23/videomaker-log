@@ -9,13 +9,12 @@ export async function getMessages() {
 
   const { data, error } = await supabase
     .from('resources')
-    .select('*, profiles(id, display_name, avatar_url, user_color)')
+    .select('*, profiles(id, display_name, avatar_url, user_color, role)')
     .gte('created_at', fourteenDaysAgo.toISOString())
     .order('created_at', { ascending: true })
     .limit(200)
 
   if (error) {
-    // user_color 컬럼이 아직 없을 경우 fallback
     const { data: fb, error: fbErr } = await supabase
       .from('resources')
       .select('*, profiles(id, display_name, avatar_url)')
@@ -34,7 +33,7 @@ export async function getArchivedMessages() {
 
   const { data, error } = await supabase
     .from('resources')
-    .select('*, profiles(id, display_name, avatar_url, user_color)')
+    .select('*, profiles(id, display_name, avatar_url, user_color, role)')
     .lt('created_at', fourteenDaysAgo.toISOString())
     .order('created_at', { ascending: false })
     .limit(200)

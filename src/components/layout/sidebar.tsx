@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { FileText, MessageSquare, Kanban, Film, LogOut, Moon, Sun, Users } from 'lucide-react'
+import { FileText, MessageSquare, Kanban, Film, LogOut, Moon, Sun, Users, Crown, Menu, X } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import type { Profile } from '@/types'
 import { getUserColor } from '@/lib/colors'
@@ -28,7 +28,9 @@ export function Sidebar() {
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [currentUserColor, setCurrentUserColor] = useState<string | null>(null)
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
   const [members, setMembers] = useState<Profile[]>([])
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     async function loadUser() {
@@ -40,12 +42,13 @@ export function Sidebar() {
         try {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('display_name, user_color')
+            .select('display_name, user_color, role')
             .eq('id', user.id)
             .single()
           if (profile) {
             setDisplayName(profile.display_name)
             setCurrentUserColor(profile.user_color)
+            setCurrentUserRole(profile.role)
           }
         } catch {
           const { data: profile } = await supabase
@@ -69,6 +72,11 @@ export function Sidebar() {
     loadUser()
   }, [])
 
+  // 모바일에서 경로 변경 시 사이드바 닫기
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -82,12 +90,20 @@ export function Sidebar() {
       ? userEmail.slice(0, 2).toUpperCase()
       : '?'
 
-  return (
-    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col overflow-y-auto border-r bg-sidebar p-4">
-      <div className="mb-6">
+  const sidebarContent = (
+    <>
+      <div className="mb-6 flex items-center justify-between">
         <Link href="/meetings">
           <h1 className="text-lg font-bold text-sidebar-foreground">Videomaker Log</h1>
         </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden size-8"
+          onClick={() => setMobileOpen(false)}
+        >
+          <X className="size-4" />
+        </Button>
       </div>
 
       <nav className="flex-1 space-y-1">
@@ -141,10 +157,11 @@ export function Sidebar() {
                     </AvatarFallback>
                   </Avatar>
                   <span className={cn(
-                    'truncate text-xs',
+                    'truncate text-xs flex items-center gap-1',
                     isMe ? 'font-medium text-sidebar-foreground' : 'text-muted-foreground'
                   )}>
                     {member.display_name}
+                    {member.role === 'master' && <Crown className="size-3 text-yellow-500 shrink-0" />}
                     {isMe && ' (나)'}
                   </span>
                 </div>
@@ -171,8 +188,9 @@ export function Sidebar() {
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-sidebar-foreground">
+            <p className="truncate text-sm font-medium text-sidebar-foreground flex items-center gap-1">
               {displayName || '사용자'}
+              {currentUserRole === 'master' && <Crown className="size-3.5 text-yellow-500 shrink-0" />}
             </p>
             {userEmail && (
               <p className="truncate text-xs text-muted-foreground">
@@ -203,6 +221,36 @@ export function Sidebar() {
           로그아웃
         </Button>
       </div>
-    </aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* 모바일 햄버거 버튼 */}
+      <button
+        type="button"
+        className="fixed top-3 left-3 z-50 flex md:hidden items-center justify-center size-10 rounded-md bg-sidebar border border-border shadow-sm"
+        onClick={() => setMobileOpen(true)}
+      >
+        <Menu className="size-5 text-sidebar-foreground" />
+      </button>
+
+      {/* 모바일 오버레이 */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* 사이드바 - 데스크톱: 항상 표시, 모바일: 토글 */}
+      <aside className={cn(
+        "fixed inset-y-0 left-0 z-50 flex h-screen w-60 flex-col overflow-y-auto border-r bg-sidebar p-4 transition-transform duration-200",
+        "md:z-30 md:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        {sidebarContent}
+      </aside>
+    </>
   )
 }

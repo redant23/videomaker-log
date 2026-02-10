@@ -13,7 +13,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Pencil, Trash2, Kanban, Archive, RotateCcw, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Kanban, Archive, RotateCcw, ChevronDown, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format, getWeek } from 'date-fns'
@@ -143,8 +143,9 @@ function TaskCardContent({
                 {authorInitials}
               </AvatarFallback>
             </Avatar>
-            <span className="text-muted-foreground truncate text-[10px] max-w-[60px]">
+            <span className="text-muted-foreground truncate text-[10px] max-w-[60px] flex items-center gap-0.5">
               {authorName}
+              {task.profiles?.role === 'master' && <Crown className="size-2.5 text-yellow-500 shrink-0" />}
             </span>
           </div>
         </div>
@@ -401,13 +402,13 @@ export default function BoardPage() {
   }
 
   return (
-    <div className="flex min-h-full flex-col gap-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-1 flex-col gap-6 overflow-y-auto">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <Kanban className="text-muted-foreground size-6" />
-          <h1 className="text-2xl font-bold">보드</h1>
+          <Kanban className="text-muted-foreground size-5 md:size-6" />
+          <h1 className="text-xl md:text-2xl font-bold">보드</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {doneTasks.length > 0 && (
             <Button variant="outline" onClick={handleArchive} disabled={archiving}>
               <Archive className="size-4" />

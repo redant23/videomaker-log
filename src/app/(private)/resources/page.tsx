@@ -1,17 +1,18 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { format, startOfWeek, getWeek } from 'date-fns'
 import { ko } from 'date-fns/locale/ko'
-import { Send, Link as LinkIcon, Trash2, ExternalLink, MessageSquare, ChevronDown } from 'lucide-react'
+import { Send, Trash2, ExternalLink, MessageSquare, ChevronDown, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
 import { getMessages, getArchivedMessages, createMessage, deleteMessage } from '@/actions/resources'
-import type { Resource } from '@/types'
+import type { Resource, Profile } from '@/types'
 import { getUserColor } from '@/lib/colors'
 import { extractUrls, isImageUrl } from '@/lib/url-utils'
+import { extractMentions } from '@/lib/mention-utils'
 import { OgPreviewCard } from '@/components/og-preview-card'
 
 import { Button } from '@/components/ui/button'
@@ -29,7 +30,6 @@ function groupByWeek(messages: Resource[]) {
   const groups: Record<string, Resource[]> = {}
   messages.forEach((msg) => {
     const date = new Date(msg.created_at)
-    const weekStart = startOfWeek(date, { weekStartsOn: 1 })
     const weekNum = getWeek(date, { weekStartsOn: 1 })
     const year = date.getFullYear()
     const key = `${year}년 ${date.getMonth() + 1}월 ${weekNum}주차`
@@ -39,17 +39,36 @@ function groupByWeek(messages: Resource[]) {
   return groups
 }
 
+/** @이름 부분을 하이라이트하여 렌더링 */
+function renderTextWithMentions(text: string) {
+  const parts = text.split(/(@\S+)/g)
+  return parts.map((part, i) =>
+    part.startsWith('@') ? (
+      <span key={i} className="font-semibold text-primary">{part}</span>
+    ) : (
+      <span key={i}>{part}</span>
+    )
+  )
+}
+
 export default function ResourcesPage() {
   const [messages, setMessages] = useState<Resource[]>([])
   const [archivedMessages, setArchivedMessages] = useState<Resource[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null)
   const [isMaster, setIsMaster] = useState(false)
+  const [members, setMembers] = useState<Profile[]>([])
   const [content, setContent] = useState('')
-  const [url, setUrl] = useState('')
-  const [showUrlField, setShowUrlField] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // 멘션 자동완성 상태
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [filteredMembers, setFilteredMembers] = useState<Profile[]>([])
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [selectedIndex, setSelectedIndex] = useState(0)
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -69,12 +88,20 @@ export default function ResourcesPage() {
           try {
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role')
+              .select('role, display_name')
               .eq('id', user.id)
               .single()
             if (profile?.role === 'master') setIsMaster(true)
+            if (profile?.display_name) setCurrentUserName(profile.display_name)
           } catch { }
         }
+
+        // 팀원 목록 로드
+        const { data: allProfiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: true })
+        if (allProfiles) setMembers(allProfiles)
 
         const data = await getMessages()
         setMessages(data ?? [])
@@ -86,7 +113,7 @@ export default function ResourcesPage() {
     init()
   }, [])
 
-  // Supabase Realtime 구독
+  // Supabase Realtime 구독 (다른 유저의 변경사항도 실시간 반영)
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
@@ -94,10 +121,7 @@ export default function ResourcesPage() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'resources' },
-        async () => {
-          const data = await getMessages()
-          setMessages(data ?? [])
-        }
+        () => { refreshMessages() }
       )
       .on(
         'postgres_changes',
@@ -129,8 +153,103 @@ export default function ResourcesPage() {
     }
   }
 
+  const refreshMessages = async () => {
+    try {
+      const data = await getMessages()
+      setMessages(data ?? [])
+    } catch (err) {
+      console.error('메시지 새로고침 실패:', err)
+    }
+  }
+
+  const sendMentionNotifications = useCallback(async (text: string) => {
+    const mentioned = extractMentions(text, members)
+    const others = mentioned.filter((m) => m.id !== currentUserId)
+    if (others.length === 0) return
+
+    try {
+      await fetch('/api/send-notification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mentionedUserIds: others.map((m) => m.id),
+          mentionerName: currentUserName ?? '팀원',
+          source: 'resource',
+          messagePreview: text.length > 100 ? text.slice(0, 100) + '...' : text,
+        }),
+      })
+    } catch (err) {
+      console.error('멘션 알림 실패:', err)
+    }
+  }, [members, currentUserId, currentUserName])
+
+  // 멘션 입력 핸들러
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value
+    const cursorPos = e.target.selectionStart ?? newValue.length
+    setContent(newValue)
+
+    const textBeforeCursor = newValue.slice(0, cursorPos)
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@')
+
+    if (lastAtIndex >= 0) {
+      const charBefore = lastAtIndex > 0 ? newValue[lastAtIndex - 1] : ' '
+      if (charBefore === ' ' || lastAtIndex === 0) {
+        const query = textBeforeCursor.slice(lastAtIndex + 1)
+        if (!query.includes(' ')) {
+          const filtered = members.filter((m) =>
+            m.display_name.toLowerCase().includes(query.toLowerCase())
+          )
+          setFilteredMembers(filtered)
+          setShowSuggestions(filtered.length > 0)
+          setMentionStart(lastAtIndex)
+          setSelectedIndex(0)
+          return
+        }
+      }
+    }
+
+    setShowSuggestions(false)
+    setMentionStart(null)
+  }
+
+  const insertMention = (member: Profile) => {
+    if (mentionStart === null) return
+    const cursorPos = inputRef.current?.selectionStart ?? content.length
+    const before = content.slice(0, mentionStart)
+    const after = content.slice(cursorPos)
+    const newValue = `${before}@${member.display_name} ${after}`
+    setContent(newValue)
+    setShowSuggestions(false)
+    setMentionStart(null)
+
+    setTimeout(() => {
+      const pos = mentionStart + member.display_name.length + 2
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(pos, pos)
+    }, 0)
+  }
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev + 1) % filteredMembers.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length)
+    } else if (e.key === 'Enter' && filteredMembers[selectedIndex]) {
+      e.preventDefault()
+      insertMention(filteredMembers[selectedIndex])
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (showSuggestions) return // 멘션 선택 중이면 전송 방지
     const trimmedContent = content.trim()
     if (!trimmedContent) return
 
@@ -138,12 +257,11 @@ export default function ResourcesPage() {
     try {
       await createMessage({
         content: trimmedContent,
-        url: url.trim() || undefined,
       })
+      // 멘션 알림 발송
+      await sendMentionNotifications(trimmedContent)
       setContent('')
-      setUrl('')
-      setShowUrlField(false)
-      toast.success('메시지를 등록했습니다.')
+      await refreshMessages()
     } catch (err) {
       console.error('메시지 등록 실패:', err)
       toast.error('메시지 등록에 실패했습니다.')
@@ -181,7 +299,7 @@ export default function ResourcesPage() {
     return (
       <>
         <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">
-          {message.content}
+          {renderTextWithMentions(message.content)}
         </p>
         {message.url && !urls.includes(message.url) && (
           <a
@@ -220,7 +338,7 @@ export default function ResourcesPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-1 min-h-0 flex-col">
       <Card className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 border-b px-4 py-3">
@@ -276,7 +394,9 @@ export default function ResourcesPage() {
                                   {format(new Date(message.created_at), 'M/d HH:mm', { locale: ko })}
                                 </span>
                               </div>
-                              <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                              <p className="mt-0.5 text-sm whitespace-pre-wrap break-words">
+                                {renderTextWithMentions(message.content)}
+                              </p>
                             </div>
                           </div>
                         )
@@ -326,8 +446,9 @@ export default function ResourcesPage() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-sm font-medium">
+                        <span className="text-sm font-medium flex items-center gap-1">
                           {displayName}
+                          {message.profiles?.role === 'master' && <Crown className="size-3 text-yellow-500" />}
                         </span>
                         <span className="text-muted-foreground text-xs">
                           {format(
@@ -358,46 +479,55 @@ export default function ResourcesPage() {
           </div>
         </ScrollArea>
 
-        {/* Input */}
+        {/* Input with mention support */}
         <div className="border-t p-4">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-            {showUrlField && (
-              <div className="flex items-center gap-2">
-                <LinkIcon className="text-muted-foreground size-4 shrink-0" />
-                <Input
-                  type="url"
-                  placeholder="URL을 입력하세요 (선택)"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="h-9 text-sm"
-                />
+          <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
+            {/* 멘션 자동완성 드롭다운 */}
+            {showSuggestions && (
+              <div className="absolute bottom-full left-0 right-12 z-50 mb-1 rounded-md border bg-popover p-1 shadow-md">
+                {filteredMembers.map((member, i) => {
+                  const uc = getUserColor(member.id, member.user_color)
+                  return (
+                    <button
+                      key={member.id}
+                      type="button"
+                      className={cn(
+                        'w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent flex items-center gap-2',
+                        i === selectedIndex && 'bg-accent'
+                      )}
+                      onMouseDown={(e) => { e.preventDefault(); insertMention(member) }}
+                    >
+                      <Avatar className="size-5">
+                        <AvatarFallback
+                          className={cn("text-[9px] font-bold", uc.text)}
+                          style={{ backgroundColor: uc.hex }}
+                        >
+                          {member.display_name.slice(0, 1).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>@{member.display_name}</span>
+                      {member.role === 'master' && <Crown className="size-3 text-yellow-500" />}
+                    </button>
+                  )
+                })}
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant={showUrlField ? 'secondary' : 'ghost'}
-                size="icon"
-                className="size-9 shrink-0"
-                onClick={() => setShowUrlField(!showUrlField)}
-              >
-                <LinkIcon className="size-4" />
-              </Button>
-              <Input
-                placeholder="리소스를 공유해보세요..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="h-9 text-sm"
-              />
-              <Button
-                type="submit"
-                size="icon"
-                className="size-9 shrink-0"
-                disabled={!content.trim() || isLoading}
-              >
-                <Send className="size-4" />
-              </Button>
-            </div>
+            <Input
+              ref={inputRef}
+              placeholder="리소스를 공유해보세요... (@로 팀원 멘션)"
+              value={content}
+              onChange={handleInputChange}
+              onKeyDown={handleInputKeyDown}
+              className="h-9 text-sm"
+            />
+            <Button
+              type="submit"
+              size="icon"
+              className="size-9 shrink-0"
+              disabled={!content.trim() || isLoading}
+            >
+              <Send className="size-4" />
+            </Button>
           </form>
         </div>
       </Card>

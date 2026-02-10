@@ -16,7 +16,7 @@ export function Header() {
   const title = pageTitles[baseRoute] || ''
 
   return (
-    <header className="flex h-14 items-center border-b px-6">
+    <header className="hidden md:flex h-14 items-center border-b px-6">
       <h2 className="text-lg font-semibold">{title}</h2>
     </header>
   )

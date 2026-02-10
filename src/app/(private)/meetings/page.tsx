@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { Plus, MoreHorizontal, Calendar, Pencil, Trash2, FileText, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
+import { Plus, MoreHorizontal, Calendar, Pencil, Trash2, FileText, ChevronLeft, ChevronRight, HelpCircle, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -433,12 +433,12 @@ export default function MeetingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6 flex-1 overflow-y-auto">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">회의록</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight">회의록</h1>
+          <p className="text-muted-foreground text-xs md:text-sm mt-1">
             팀 회의 기록을 관리합니다.
           </p>
         </div>
@@ -538,7 +538,10 @@ export default function MeetingsPage() {
                               {meeting.profiles.display_name.slice(0, 1).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
-                          <span>{meeting.profiles.display_name}</span>
+                          <span className="flex items-center gap-1">
+                            {meeting.profiles.display_name}
+                            {meeting.profiles.role === 'master' && <Crown className="size-3 text-yellow-500" />}
+                          </span>
                         </div>
                       </>
                     )}
@@ -581,7 +584,7 @@ export default function MeetingsPage() {
                   )}
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2">
                     {meeting.progress_review && (
                       <div className="rounded-md bg-muted/50 p-3">
                         <p className="text-xs font-medium text-muted-foreground mb-1">

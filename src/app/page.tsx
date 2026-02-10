@@ -40,13 +40,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
       {/* Header */}
       <header className="border-b border-white/10 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Film className="h-6 w-6 text-violet-400" />
-            <h1 className="text-xl font-bold">Portfolio Showcase</h1>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Film className="h-5 w-5 sm:h-6 sm:w-6 text-violet-400" />
+            <h1 className="text-base sm:text-xl font-bold">Portfolio Showcase</h1>
           </div>
           <Link href="/login">
-            <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10">
+            <Button variant="outline" size="sm" className="!bg-transparent border-white/20 text-white hover:bg-white/10">
               <LogIn className="h-4 w-4 mr-2" />
               로그인
             </Button>
@@ -54,14 +54,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Tag Filter */}
         {allTags.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-8">
             <Link href="/">
               <Badge
                 variant={selectedTag ? 'outline' : 'default'}
-                className={`cursor-pointer ${!selectedTag ? 'bg-violet-600 hover:bg-violet-700' : 'border-white/20 text-white/70 hover:bg-white/10'}`}
+                className={`cursor-pointer ${!selectedTag ? 'bg-violet-600 hover:bg-violet-700 text-white' : '!bg-transparent border-white/20 text-white/70 hover:bg-white/10'}`}
               >
                 전체
               </Badge>
@@ -70,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
               <Link key={tag} href={`/?tag=${encodeURIComponent(tag)}`}>
                 <Badge
                   variant={selectedTag === tag ? 'default' : 'outline'}
-                  className={`cursor-pointer ${selectedTag === tag ? 'bg-violet-600 hover:bg-violet-700' : 'border-white/20 text-white/70 hover:bg-white/10'}`}
+                  className={`cursor-pointer ${selectedTag === tag ? 'bg-violet-600 hover:bg-violet-700 text-white' : '!bg-transparent border-white/20 text-white/70 hover:bg-white/10'}`}
                 >
                   <Tag className="h-3 w-3 mr-1" />
                   {tag}

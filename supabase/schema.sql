@@ -5,6 +5,7 @@
 CREATE TABLE public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
+  email TEXT,
   avatar_url TEXT,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('master', 'member')),
   user_color TEXT,
@@ -20,8 +21,8 @@ CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE TO au
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, display_name)
-  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)));
+  INSERT INTO public.profiles (id, display_name, email)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)), NEW.email);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -147,3 +148,15 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.portfolio_items FOR EACH R
 -- CREATE POLICY "Public can view all" ON public.portfolio_items FOR SELECT TO anon USING (true);
 -- DROP INDEX idx_portfolio_public;
 -- UPDATE public.profiles SET role = 'master' WHERE id = (SELECT id FROM auth.users WHERE email = 'redant23ai@gmail.com');
+
+-- Email column migration (for @mention email notifications):
+-- ALTER TABLE public.profiles ADD COLUMN email TEXT;
+-- UPDATE public.profiles SET email = au.email FROM auth.users au WHERE profiles.id = au.id;
+-- CREATE OR REPLACE FUNCTION public.handle_new_user()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--   INSERT INTO public.profiles (id, display_name, email)
+--   VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1)), NEW.email);
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
