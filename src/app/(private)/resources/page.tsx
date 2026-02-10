@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { format, startOfWeek, getWeek } from 'date-fns'
 import { ko } from 'date-fns/locale/ko'
 import { Send, Link as LinkIcon, Trash2, ExternalLink, MessageSquare, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import { createClient } from '@/lib/supabase/client'
@@ -72,7 +73,7 @@ export default function ResourcesPage() {
               .eq('id', user.id)
               .single()
             if (profile?.role === 'master') setIsMaster(true)
-          } catch {}
+          } catch { }
         }
 
         const data = await getMessages()
@@ -257,11 +258,14 @@ export default function ResourcesPage() {
                       </div>
                       {msgs.map((message) => {
                         const displayName = message.profiles?.display_name ?? '알 수 없음'
-                        const userColor = getUserColor(message.author_id, (message.profiles as any)?.user_color)
+                        const userColor = getUserColor(message.author_id, message.profiles)
                         return (
                           <div key={message.id} className="flex items-start gap-3 rounded-lg px-3 py-2 opacity-60">
                             <Avatar size="sm" className="mt-0.5 shrink-0">
-                              <AvatarFallback className={`${userColor.bg} ${userColor.text} font-medium border !border-white/10`}>
+                              <AvatarFallback
+                                className={cn("font-medium border !border-white/10", userColor.text)}
+                                style={{ backgroundColor: userColor.hex }}
+                              >
                                 {getInitials(displayName)}
                               </AvatarFallback>
                             </Avatar>
@@ -298,7 +302,7 @@ export default function ResourcesPage() {
               messages.map((message) => {
                 const displayName =
                   message.profiles?.display_name ?? '알 수 없음'
-                const userColor = getUserColor(message.author_id, (message.profiles as any)?.user_color)
+                const userColor = getUserColor(message.author_id, message.profiles)
 
                 return (
                   <div
@@ -312,7 +316,10 @@ export default function ResourcesPage() {
                           alt={displayName}
                         />
                       ) : null}
-                      <AvatarFallback className={`${userColor.bg} ${userColor.text} font-medium border !border-white/10`}>
+                      <AvatarFallback
+                        className={cn("font-medium border !border-white/10", userColor.text)}
+                        style={{ backgroundColor: userColor.hex }}
+                      >
                         {getInitials(displayName)}
                       </AvatarFallback>
                     </Avatar>

@@ -3,17 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import {
-  Plus,
-  MoreHorizontal,
-  Calendar,
-  Pencil,
-  Trash2,
-  FileText,
-  ChevronLeft,
-  ChevronRight,
-  HelpCircle,
-} from 'lucide-react'
+import { Plus, MoreHorizontal, Calendar, Pencil, Trash2, FileText, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import { Meeting, Profile } from '@/types'
@@ -518,7 +509,7 @@ export default function MeetingsPage() {
         /* Meeting Cards */
         <div className="grid gap-4">
           {meetings.map((meeting) => {
-            const userColor = getUserColor(meeting.created_by, (meeting.profiles as any)?.user_color)
+            const userColor = getUserColor(meeting.created_by, meeting.profiles)
             return (
               <Card key={meeting.id} className="transition-shadow hover:shadow-md cursor-pointer" onClick={() => openDetail(meeting)}>
                 <CardHeader>
@@ -540,7 +531,10 @@ export default function MeetingsPage() {
                             {meeting.profiles.avatar_url && (
                               <AvatarImage src={meeting.profiles.avatar_url} />
                             )}
-                            <AvatarFallback className={`text-[9px] font-bold ${userColor.bg} ${userColor.text}`}>
+                            <AvatarFallback
+                              className={cn("text-[9px] font-bold", userColor.text)}
+                              style={{ backgroundColor: userColor.hex }}
+                            >
                               {meeting.profiles.display_name.slice(0, 1).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>

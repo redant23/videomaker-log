@@ -23,24 +23,36 @@ export const COLOR_OPTIONS = [
 
 function colorFromHex(hex: string): UserColor {
   return {
-    bg: `bg-[${hex}]`,
+    bg: '', // Removed dynamic tailwind class
     text: 'text-white',
     border: 'border-white/20',
-    indicator: `bg-[${hex}]`,
+    indicator: '', // Removed dynamic tailwind class
     hex,
   }
 }
 
-export const getUserColor = (id: string = 'default', userColor?: string | null): UserColor => {
-  if (userColor) {
-    return colorFromHex(userColor)
+export const getUserColor = (id: string = 'default', userColor?: any): UserColor => {
+  // 인자로 들어온 userColor가 객체거나 배열인 경우를 위해 safe access
+  let hex: string | null = null
+
+  if (typeof userColor === 'string') {
+    hex = userColor
+  } else if (userColor && typeof userColor === 'object') {
+    // 만약 배열로 들어왔다면 첫 번째 요소 사용
+    const target = Array.isArray(userColor) ? userColor[0] : userColor
+    hex = target?.user_color || target?.hex || null
   }
 
-  const colors = COLOR_OPTIONS.map((c) => c.hex)
+  if (hex && hex.startsWith('#')) {
+    return colorFromHex(hex)
+  }
 
+  // 해시 기반 컬러 결정
+  const colors = COLOR_OPTIONS.map((c) => c.hex)
   let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  const stringId = String(id || 'default')
+  for (let i = 0; i < stringId.length; i++) {
+    hash = stringId.charCodeAt(i) + ((hash << 5) - hash)
   }
   const index = Math.abs(hash) % colors.length
   return colorFromHex(colors[index])

@@ -1,9 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2,
-} from 'lucide-react'
+import { Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import type { PortfolioItem, Profile } from '@/types'
@@ -76,12 +75,12 @@ export default function PortfolioPage() {
         try {
           const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
           if (profile?.role === 'master') setIsMaster(true)
-        } catch {}
+        } catch { }
       }
       const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: true })
       if (data) setMembers(data)
 
-      try { const accts = await getDistinctAccounts(); setAccounts(accts) } catch {}
+      try { const accts = await getDistinctAccounts(); setAccounts(accts) } catch { }
     }
     init()
   }, [])
@@ -179,7 +178,7 @@ export default function PortfolioPage() {
       }
       setDialogOpen(false)
       fetchItems()
-      try { const accts = await getDistinctAccounts(); setAccounts(accts) } catch {}
+      try { const accts = await getDistinctAccounts(); setAccounts(accts) } catch { }
     } catch (err) {
       console.error('포트폴리오 저장 실패:', err)
       toast.error(editingItem ? '수정에 실패했습니다.' : '등록에 실패했습니다.')
@@ -289,11 +288,14 @@ export default function PortfolioPage() {
                   </div>
                 )}
                 {item.profiles?.display_name && (() => {
-                  const uc = getUserColor(item.created_by, (item.profiles as any)?.user_color)
+                  const uc = getUserColor(item.created_by, item.profiles)
                   return (
                     <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
                       <Avatar className="size-4">
-                        <AvatarFallback className={`text-[8px] font-bold border !border-white/20 ${uc.bg} ${uc.text}`}>
+                        <AvatarFallback
+                          className={cn("text-[8px] font-bold border !border-white/20", uc.text)}
+                          style={{ backgroundColor: uc.hex }}
+                        >
                           {item.profiles.display_name.slice(0, 1).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>

@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { Plus, Pencil, Trash2, Kanban, Archive, RotateCcw, ChevronDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format, getWeek } from 'date-fns'
 
@@ -94,14 +95,14 @@ function TaskCardContent({
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = task.profiles?.display_name ?? '알 수 없음'
   const authorInitials = authorName.slice(0, 1).toUpperCase()
-  const userColor = getUserColor(task.profiles?.id || task.created_by, (task.profiles as any)?.user_color)
+  const userColor = getUserColor(task.profiles?.id || task.created_by, task.profiles)
 
   return (
     <Card
       className="relative gap-1 py-2 shadow-sm !bg-white/40 dark:!bg-black/40 backdrop-blur-md border-white/20 cursor-pointer overflow-hidden transition-all"
       onClick={() => setIsExpanded(!isExpanded)}
     >
-      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${userColor.indicator}`} />
+      <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: userColor.hex }} />
 
       <CardHeader className="pl-4 pr-3 py-0 mb-[-4px]">
         <div className="flex items-start justify-between gap-2">
@@ -135,7 +136,10 @@ function TaskCardContent({
           </Badge>
           <div className="flex items-center gap-1">
             <Avatar size="sm" className="size-4">
-              <AvatarFallback className={`text-[8px] font-bold border !border-white/20 transition-colors ${userColor.bg} ${userColor.text}`}>
+              <AvatarFallback
+                className={cn("text-[8px] font-bold border !border-white/20 transition-colors", userColor.text)}
+                style={{ backgroundColor: userColor.hex }}
+              >
                 {authorInitials}
               </AvatarFallback>
             </Avatar>
@@ -331,7 +335,7 @@ export default function BoardPage() {
         try {
           const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
           if (profile?.role === 'master') setIsMaster(true)
-        } catch {}
+        } catch { }
       }
     }
     loadUser()
@@ -426,7 +430,7 @@ export default function BoardPage() {
         <DragOverlay>
           {activeTask ? (
             <div className="w-72 rotate-2 opacity-90">
-              <TaskCardContent task={activeTask} onEdit={() => {}} onDelete={() => {}} />
+              <TaskCardContent task={activeTask} onEdit={() => { }} onDelete={() => { }} />
             </div>
           ) : null}
         </DragOverlay>
@@ -456,7 +460,7 @@ export default function BoardPage() {
                   <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                     {weekTasks.map((task) => (
                       <div key={task.id} className="relative opacity-60 hover:opacity-100 transition-opacity">
-                        <TaskCardContent task={task} onEdit={() => {}} onDelete={() => {}} showActions={false} />
+                        <TaskCardContent task={task} onEdit={() => { }} onDelete={() => { }} showActions={false} />
                         <Button
                           variant="outline"
                           size="sm"

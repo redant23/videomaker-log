@@ -133,7 +133,10 @@ export function Sidebar() {
                   className="flex items-center gap-2.5 rounded-md px-2 py-1.5"
                 >
                   <Avatar size="sm" className="size-5">
-                    <AvatarFallback className={cn("text-[10px] font-bold border !border-white/20", userColor.bg, userColor.text)}>
+                    <AvatarFallback
+                      className={cn("text-[10px] font-bold border !border-white/20", userColor.text)}
+                      style={{ backgroundColor: userColor.hex }}
+                    >
                       {memberInitial}
                     </AvatarFallback>
                   </Avatar>
@@ -160,7 +163,10 @@ export function Sidebar() {
           pathname === '/profile' && 'bg-sidebar-accent'
         )}>
           <Avatar size="sm">
-            <AvatarFallback className={cn("font-bold border !border-white/20", getUserColor(currentUserId || 'default', currentUserColor).bg, getUserColor(currentUserId || 'default', currentUserColor).text)}>
+            <AvatarFallback
+              className={cn("font-bold border !border-white/20", getUserColor(currentUserId || 'default', currentUserColor).text)}
+              style={{ backgroundColor: getUserColor(currentUserId || 'default', currentUserColor).hex }}
+            >
               {initials}
             </AvatarFallback>
           </Avatar>
