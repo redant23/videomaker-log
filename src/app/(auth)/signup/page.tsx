@@ -25,7 +25,7 @@ export default function SignupPage() {
     setError(null)
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -36,6 +36,13 @@ export default function SignupPage() {
 
     if (error) {
       setError(error.message)
+      setLoading(false)
+      return
+    }
+
+    // Check if user already exists (identities will be empty if email confirmation is enabled and user exists)
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      setError('이미 가입된 이메일 주소입니다.')
       setLoading(false)
       return
     }
