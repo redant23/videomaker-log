@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { FileText, MessageSquare, Kanban, Film, LogOut, Moon, Sun, Users } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import type { Profile } from '@/types'
+import { getUserColor } from '@/lib/colors'
 
 const navItems = [
   { href: '/meetings', label: '회의록', icon: FileText },
@@ -113,6 +114,7 @@ export function Sidebar() {
           <div className="space-y-0.5 max-h-32 overflow-y-auto">
             {members.map((member) => {
               const isMe = member.id === currentUserId
+              const userColor = getUserColor(member.id)
               const memberInitial = member.display_name.slice(0, 1).toUpperCase()
               return (
                 <div
@@ -120,7 +122,9 @@ export function Sidebar() {
                   className="flex items-center gap-2.5 rounded-md px-2 py-1.5"
                 >
                   <Avatar size="sm" className="size-5">
-                    <AvatarFallback className="text-[10px]">{memberInitial}</AvatarFallback>
+                    <AvatarFallback className={cn("text-[10px] text-white font-bold border-none", userColor.bg)}>
+                      {memberInitial}
+                    </AvatarFallback>
                   </Avatar>
                   <span className={cn(
                     'truncate text-xs',
@@ -141,7 +145,9 @@ export function Sidebar() {
       {/* 로그인 사용자 정보 */}
       <div className="mb-3 flex items-center gap-3 rounded-md px-2 py-2">
         <Avatar size="sm">
-          <AvatarFallback>{initials}</AvatarFallback>
+          <AvatarFallback className={cn("text-white font-bold border-none", getUserColor(currentUserId || 'default').bg)}>
+            {initials}
+          </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-sidebar-foreground">

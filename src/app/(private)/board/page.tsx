@@ -44,6 +44,7 @@ import { getTasks, createTask, updateTask, updateTaskStatus, deleteTask } from '
 import { BOARD_COLUMNS } from '@/lib/constants'
 import type { Task, TaskStatus, TaskPriority } from '@/types'
 import { TASK_PRIORITY_LABELS } from '@/types'
+import { getUserColor } from '@/lib/colors'
 
 // ─── Priority badge variant mapping ───────────────────────────────────────────
 const PRIORITY_VARIANT: Record<TaskPriority, 'secondary' | 'default' | 'destructive'> = {
@@ -74,6 +75,8 @@ const COLUMN_STYLES: Record<TaskStatus, { bg: string; border: string; headerBg: 
   },
 }
 
+
+
 // ─── Task Card (static, used both inline and in DragOverlay) ──────────────────
 function TaskCardContent({
   task,
@@ -87,13 +90,17 @@ function TaskCardContent({
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = task.profiles?.display_name ?? '알 수 없음'
   const authorInitials = authorName.slice(0, 1).toUpperCase()
+  const userColor = getUserColor(task.profiles?.id || task.created_by)
 
   return (
     <Card
-      className="gap-1 py-2 shadow-sm !bg-white/40 dark:!bg-black/40 backdrop-blur-md border-white/20 cursor-pointer overflow-hidden transition-all"
+      className="relative gap-1 py-2 shadow-sm !bg-white/40 dark:!bg-black/40 backdrop-blur-md border-white/20 cursor-pointer overflow-hidden transition-all"
       onClick={() => setIsExpanded(!isExpanded)}
     >
-      <CardHeader className="px-3 py-0 mb-[-4px]">
+      {/* User Indicator Bar */}
+      <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${userColor.indicator}`} />
+
+      <CardHeader className="pl-4 pr-3 py-0 mb-[-4px]">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-sm font-medium leading-none mt-1.5">{task.title}</CardTitle>
           <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
@@ -127,7 +134,7 @@ function TaskCardContent({
         <div className="mx-3 border-t border-black/[0.05] dark:border-white/10" />
       )}
 
-      <CardContent className="px-3 py-0">
+      <CardContent className="pl-4 pr-3 py-0">
         {task.description && (
           <p className={`text-muted-foreground mt-1 mb-1.5 text-[11px] leading-relaxed transition-all ${isExpanded ? '' : 'line-clamp-1'}`}>
             {task.description}
@@ -139,7 +146,9 @@ function TaskCardContent({
           </Badge>
           <div className="flex items-center gap-1">
             <Avatar size="sm" className="size-4">
-              <AvatarFallback className="text-[8px]">{authorInitials}</AvatarFallback>
+              <AvatarFallback className={`text-[8px] text-white font-bold border-none transition-colors ${userColor.bg}`}>
+                {authorInitials}
+              </AvatarFallback>
             </Avatar>
             <span className="text-muted-foreground truncate text-[10px] max-w-[60px]">
               {authorName}
@@ -190,13 +199,11 @@ function DroppableColumn({
   tasks,
   onEdit,
   onDelete,
-  onAdd,
 }: {
   column: (typeof BOARD_COLUMNS)[number]
   tasks: Task[]
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
-  onAdd: (status: TaskStatus) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -219,14 +226,7 @@ function DroppableColumn({
             {tasks.length}
           </Badge>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={() => onAdd(column.id)}
-        >
-          <Plus className="size-4" />
-        </Button>
+
       </div>
 
       <div className="flex-1">
@@ -552,7 +552,6 @@ export default function BoardPage() {
               tasks={tasksByStatus[column.id] ?? []}
               onEdit={handleEdit}
               onDelete={handleDeleteClick}
-              onAdd={handleAdd}
             />
           ))}
         </div>
