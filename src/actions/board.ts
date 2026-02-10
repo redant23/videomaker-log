@@ -7,10 +7,19 @@ export async function getTasks() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('tasks')
-    .select('*, profiles:created_by(display_name)')
+    .select('*, profiles:created_by(id, display_name, user_color)')
+    .is('archived_at', null)
     .order('position', { ascending: true })
 
-  if (error) throw error
+  if (error) {
+    // archived_at 또는 user_color 컬럼이 아직 없을 경우 fallback
+    const { data: fb, error: fbErr } = await supabase
+      .from('tasks')
+      .select('*, profiles:created_by(id, display_name)')
+      .order('position', { ascending: true })
+    if (fbErr) throw fbErr
+    return fb
+  }
   return data
 }
 

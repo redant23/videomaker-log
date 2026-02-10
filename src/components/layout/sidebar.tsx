@@ -27,6 +27,7 @@ export function Sidebar() {
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserColor, setCurrentUserColor] = useState<string | null>(null)
   const [members, setMembers] = useState<Profile[]>([])
 
   useEffect(() => {
@@ -36,13 +37,23 @@ export function Sidebar() {
       if (user) {
         setUserEmail(user.email ?? null)
         setCurrentUserId(user.id)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('id', user.id)
-          .single()
-        if (profile) {
-          setDisplayName(profile.display_name)
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name, user_color')
+            .eq('id', user.id)
+            .single()
+          if (profile) {
+            setDisplayName(profile.display_name)
+            setCurrentUserColor(profile.user_color)
+          }
+        } catch {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('id', user.id)
+            .single()
+          if (profile) setDisplayName(profile.display_name)
         }
 
         // 팀원 목록 로드
@@ -114,7 +125,7 @@ export function Sidebar() {
           <div className="space-y-0.5 max-h-32 overflow-y-auto">
             {members.map((member) => {
               const isMe = member.id === currentUserId
-              const userColor = getUserColor(member.id)
+              const userColor = getUserColor(member.id, member.user_color)
               const memberInitial = member.display_name.slice(0, 1).toUpperCase()
               return (
                 <div
@@ -142,24 +153,29 @@ export function Sidebar() {
 
       <Separator className="my-3" />
 
-      {/* 로그인 사용자 정보 */}
-      <div className="mb-3 flex items-center gap-3 rounded-md px-2 py-2">
-        <Avatar size="sm">
-          <AvatarFallback className={cn("font-bold border !border-white/20", getUserColor(currentUserId || 'default').bg, getUserColor(currentUserId || 'default').text)}>
-            {initials}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-sidebar-foreground">
-            {displayName || '사용자'}
-          </p>
-          {userEmail && (
-            <p className="truncate text-xs text-muted-foreground">
-              {userEmail}
+      {/* 로그인 사용자 정보 - 클릭 시 내 정보 */}
+      <Link href="/profile">
+        <div className={cn(
+          "mb-3 flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-sidebar-accent/50",
+          pathname === '/profile' && 'bg-sidebar-accent'
+        )}>
+          <Avatar size="sm">
+            <AvatarFallback className={cn("font-bold border !border-white/20", getUserColor(currentUserId || 'default', currentUserColor).bg, getUserColor(currentUserId || 'default', currentUserColor).text)}>
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-sidebar-foreground">
+              {displayName || '사용자'}
             </p>
-          )}
+            {userEmail && (
+              <p className="truncate text-xs text-muted-foreground">
+                {userEmail}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      </Link>
 
       <div className="space-y-2">
         <Button

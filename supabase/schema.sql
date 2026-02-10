@@ -6,6 +6,8 @@ CREATE TABLE public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
   avatar_url TEXT,
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('master', 'member')),
+  user_color TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -38,6 +40,9 @@ CREATE TABLE public.meetings (
   retrospective TEXT NOT NULL DEFAULT '',
   next_week_plan TEXT NOT NULL DEFAULT '',
   created_by UUID NOT NULL REFERENCES public.profiles(id),
+  edited_by UUID REFERENCES public.profiles(id),
+  edited_at TIMESTAMPTZ,
+  edit_status TEXT NOT NULL DEFAULT 'original' CHECK (edit_status IN ('original', 'edited')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -71,6 +76,7 @@ CREATE TABLE public.tasks (
   priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   assignee_id UUID REFERENCES public.profiles(id),
   position INTEGER NOT NULL DEFAULT 0,
+  archived_at TIMESTAMPTZ,
   created_by UUID NOT NULL REFERENCES public.profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -79,6 +85,7 @@ CREATE TABLE public.tasks (
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated full access" ON public.tasks FOR ALL TO authenticated USING (true) WITH CHECK (true);
 CREATE INDEX idx_tasks_status ON public.tasks(status, position);
+CREATE INDEX idx_tasks_archived ON public.tasks(archived_at) WHERE archived_at IS NOT NULL;
 
 -- 5. Portfolio items table
 CREATE TABLE public.portfolio_items (
@@ -91,7 +98,6 @@ CREATE TABLE public.portfolio_items (
   thumbnail_url TEXT,
   tags TEXT[] NOT NULL DEFAULT '{}',
   account TEXT,
-  is_public BOOLEAN NOT NULL DEFAULT false,
   created_by UUID NOT NULL REFERENCES public.profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -99,9 +105,21 @@ CREATE TABLE public.portfolio_items (
 
 ALTER TABLE public.portfolio_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated full access" ON public.portfolio_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Public can view published" ON public.portfolio_items FOR SELECT TO anon USING (is_public = true);
+CREATE POLICY "Public can view all" ON public.portfolio_items FOR SELECT TO anon USING (true);
 CREATE INDEX idx_portfolio_tags ON public.portfolio_items USING GIN(tags);
-CREATE INDEX idx_portfolio_public ON public.portfolio_items(is_public) WHERE is_public = true;
+
+-- 6. Email queue table
+CREATE TABLE public.email_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  to_email TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  html_body TEXT NOT NULL,
+  scheduled_for TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_email_queue_pending ON public.email_queue(scheduled_for) WHERE sent_at IS NULL;
 
 -- Auto-update updated_at trigger
 CREATE OR REPLACE FUNCTION public.update_updated_at()
@@ -115,3 +133,17 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.meetings FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.tasks FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.portfolio_items FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- Migration SQL (run separately if upgrading from existing schema):
+-- ALTER TABLE public.profiles ADD COLUMN role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('master', 'member'));
+-- ALTER TABLE public.profiles ADD COLUMN user_color TEXT;
+-- ALTER TABLE public.meetings ADD COLUMN edited_by UUID REFERENCES public.profiles(id);
+-- ALTER TABLE public.meetings ADD COLUMN edited_at TIMESTAMPTZ;
+-- ALTER TABLE public.meetings ADD COLUMN edit_status TEXT NOT NULL DEFAULT 'original' CHECK (edit_status IN ('original', 'edited'));
+-- ALTER TABLE public.tasks ADD COLUMN archived_at TIMESTAMPTZ;
+-- CREATE INDEX idx_tasks_archived ON public.tasks(archived_at) WHERE archived_at IS NOT NULL;
+-- ALTER TABLE public.portfolio_items DROP COLUMN is_public;
+-- DROP POLICY "Public can view published" ON public.portfolio_items;
+-- CREATE POLICY "Public can view all" ON public.portfolio_items FOR SELECT TO anon USING (true);
+-- DROP INDEX idx_portfolio_public;
+-- UPDATE public.profiles SET role = 'master' WHERE id = (SELECT id FROM auth.users WHERE email = 'redant23ai@gmail.com');

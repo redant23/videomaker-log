@@ -7,10 +7,18 @@ export async function getMeetings() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('meetings')
-    .select('*, profiles(display_name)')
+    .select('*, profiles:created_by(id, display_name, user_color), editor:edited_by(display_name)')
     .order('meeting_date', { ascending: false })
 
-  if (error) throw error
+  if (error) {
+    // edited_by 또는 user_color 컬럼이 아직 없을 경우 fallback
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('meetings')
+      .select('*, profiles:created_by(id, display_name)')
+      .order('meeting_date', { ascending: false })
+    if (fallbackError) throw fallbackError
+    return fallbackData
+  }
   return data
 }
 
@@ -18,7 +26,7 @@ export async function getMeeting(id: string) {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('meetings')
-    .select('*, profiles(display_name)')
+    .select('*, profiles:created_by(id, display_name, user_color), editor:edited_by(display_name)')
     .eq('id', id)
     .single()
 
@@ -56,12 +64,27 @@ export async function updateMeeting(id: string, formData: {
   next_week_plan: string
 }) {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Unauthorized')
+
   const { error } = await supabase
     .from('meetings')
-    .update(formData)
+    .update({
+      ...formData,
+      edited_by: user.id,
+      edited_at: new Date().toISOString(),
+      edit_status: 'edited',
+    })
     .eq('id', id)
 
-  if (error) throw error
+  if (error) {
+    // edited_by 등 컬럼이 아직 없을 경우 기본 업데이트만
+    const { error: fbErr } = await supabase
+      .from('meetings')
+      .update(formData)
+      .eq('id', id)
+    if (fbErr) throw fbErr
+  }
   revalidatePath('/meetings')
   revalidatePath(`/meetings/${id}`)
 }

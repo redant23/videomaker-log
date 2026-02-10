@@ -9,19 +9,25 @@ import {
   Calendar,
   Pencil,
   Trash2,
-  Eye,
   FileText,
+  ChevronLeft,
+  ChevronRight,
+  HelpCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { Meeting } from '@/types'
+import { Meeting, Profile } from '@/types'
 import { getUserColor } from '@/lib/colors'
+import { createClient } from '@/lib/supabase/client'
 import {
   getMeetings,
   createMeeting,
   updateMeeting,
   deleteMeeting,
 } from '@/actions/meetings'
+import { extractMentions } from '@/lib/mention-utils'
+import { MarkdownRenderer, stripMarkdown } from '@/components/markdown-renderer'
+import { MentionInput } from '@/components/mention-input'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -45,7 +51,6 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -57,6 +62,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 type FormData = {
   title: string
@@ -80,12 +91,26 @@ function getEmptyForm(): FormData {
 
 function truncate(text: string, maxLength: number = 80) {
   if (!text) return ''
-  return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
+  const stripped = stripMarkdown(text)
+  return stripped.length > maxLength ? stripped.slice(0, maxLength) + '...' : stripped
 }
+
+const STEP_LABELS = [
+  { key: 'title', label: '제목 · 날짜' },
+  { key: 'progress_review', label: '진행 상황' },
+  { key: 'deliverable_review', label: '산출물 리뷰' },
+  { key: 'retrospective', label: '회고' },
+  { key: 'next_week_plan', label: '다음 주 계획' },
+] as const
+
+const MARKDOWN_HELP = '마크다운 지원: **굵게**, *기울임*, `코드`, - 목록, ## 제목, [링크](url)'
 
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
+  const [members, setMembers] = useState<Profile[]>([])
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [isMaster, setIsMaster] = useState(false)
 
   // Dialog states
   const [createOpen, setCreateOpen] = useState(false)
@@ -97,6 +122,34 @@ export default function MeetingsPage() {
   const [formData, setFormData] = useState<FormData>(getEmptyForm)
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [step, setStep] = useState(0)
+
+  useEffect(() => {
+    async function loadUser() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setCurrentUserId(user.id)
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+          if (profile?.role === 'master') setIsMaster(true)
+        } catch {
+          // role 컬럼이 아직 없는 경우 무시
+        }
+
+        const { data: allProfiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: true })
+        if (allProfiles) setMembers(allProfiles)
+      }
+    }
+    loadUser()
+  }, [])
 
   const fetchMeetings = useCallback(async () => {
     try {
@@ -114,6 +167,39 @@ export default function MeetingsPage() {
     fetchMeetings()
   }, [fetchMeetings])
 
+  const canEditOrDelete = (meeting: Meeting) => {
+    return isMaster || meeting.created_by === currentUserId
+  }
+
+  const sendMentionNotifications = async (text: string, meetingTitle: string) => {
+    const allText = [
+      formData.progress_review,
+      formData.deliverable_review,
+      formData.retrospective,
+      formData.next_week_plan,
+    ].join(' ')
+
+    const mentioned = extractMentions(allText, members)
+    const otherMentioned = mentioned.filter((m) => m.id !== currentUserId)
+
+    if (otherMentioned.length > 0) {
+      const currentMember = members.find((m) => m.id === currentUserId)
+      try {
+        await fetch('/api/send-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mentionedUserIds: otherMentioned.map((m) => m.id),
+            meetingTitle,
+            mentionerName: currentMember?.display_name ?? '팀원',
+          }),
+        })
+      } catch (err) {
+        console.error('멘션 알림 실패:', err)
+      }
+    }
+  }
+
   const handleCreate = async () => {
     if (!formData.title.trim()) {
       toast.error('제목을 입력해주세요.')
@@ -122,9 +208,11 @@ export default function MeetingsPage() {
     setSubmitting(true)
     try {
       await createMeeting(formData)
+      await sendMentionNotifications(formData.title, formData.title)
       toast.success('회의록이 생성되었습니다.')
       setCreateOpen(false)
       setFormData(getEmptyForm())
+      setStep(0)
       await fetchMeetings()
     } catch (err) {
       console.error('회의록 생성 실패:', err)
@@ -143,10 +231,12 @@ export default function MeetingsPage() {
     setSubmitting(true)
     try {
       await updateMeeting(selectedMeeting.id, formData)
+      await sendMentionNotifications(formData.title, formData.title)
       toast.success('회의록이 수정되었습니다.')
       setEditOpen(false)
       setSelectedMeeting(null)
       setFormData(getEmptyForm())
+      setStep(0)
       await fetchMeetings()
     } catch (err) {
       console.error('회의록 수정 실패:', err)
@@ -183,6 +273,7 @@ export default function MeetingsPage() {
       retrospective: meeting.retrospective,
       next_week_plan: meeting.next_week_plan,
     })
+    setStep(0)
     setEditOpen(true)
   }
 
@@ -200,66 +291,145 @@ export default function MeetingsPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const formFields = (
+  const stepContent = (
     <div className="grid gap-4">
-      <div className="grid gap-2">
-        <Label htmlFor="title">제목</Label>
-        <Input
-          id="title"
-          placeholder="회의 제목을 입력하세요"
-          value={formData.title}
-          onChange={(e) => updateField('title', e.target.value)}
-        />
+      {/* Step indicators */}
+      <div className="flex items-center gap-1">
+        {STEP_LABELS.map((s, i) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setStep(i)}
+            className={`flex-1 h-1.5 rounded-full transition-colors ${i <= step ? 'bg-primary' : 'bg-muted'}`}
+          />
+        ))}
       </div>
-      <div className="grid gap-2">
-        <Label htmlFor="meeting_date">회의 날짜</Label>
-        <Input
-          id="meeting_date"
-          type="date"
-          value={formData.meeting_date}
-          onChange={(e) => updateField('meeting_date', e.target.value)}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="progress_review">진행 상황 리뷰</Label>
-        <Textarea
-          id="progress_review"
-          placeholder="진행 상황을 입력하세요"
-          rows={3}
-          value={formData.progress_review}
-          onChange={(e) => updateField('progress_review', e.target.value)}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="deliverable_review">산출물 리뷰</Label>
-        <Textarea
-          id="deliverable_review"
-          placeholder="산출물 리뷰를 입력하세요"
-          rows={3}
-          value={formData.deliverable_review}
-          onChange={(e) => updateField('deliverable_review', e.target.value)}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="retrospective">회고</Label>
-        <Textarea
-          id="retrospective"
-          placeholder="회고 내용을 입력하세요"
-          rows={3}
-          value={formData.retrospective}
-          onChange={(e) => updateField('retrospective', e.target.value)}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label htmlFor="next_week_plan">다음 주 계획</Label>
-        <Textarea
-          id="next_week_plan"
-          placeholder="다음 주 계획을 입력하세요"
-          rows={3}
-          value={formData.next_week_plan}
-          onChange={(e) => updateField('next_week_plan', e.target.value)}
-        />
-      </div>
+      <p className="text-xs text-muted-foreground text-center">
+        {step + 1}/{STEP_LABELS.length} · {STEP_LABELS[step].label}
+      </p>
+
+      {step === 0 && (
+        <>
+          <div className="grid gap-2">
+            <Label htmlFor="title">제목</Label>
+            <Input
+              id="title"
+              placeholder="회의 제목을 입력하세요"
+              value={formData.title}
+              onChange={(e) => updateField('title', e.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="meeting_date">회의 날짜</Label>
+            <Input
+              id="meeting_date"
+              type="date"
+              value={formData.meeting_date}
+              onChange={(e) => updateField('meeting_date', e.target.value)}
+            />
+          </div>
+        </>
+      )}
+      {step === 1 && (
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="progress_review">진행 상황 리뷰</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {MARKDOWN_HELP}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <MentionInput
+            id="progress_review"
+            placeholder="진행 상황을 입력하세요 (@멘션 가능)"
+            rows={6}
+            value={formData.progress_review}
+            onChange={(v) => updateField('progress_review', v)}
+            members={members}
+          />
+        </div>
+      )}
+      {step === 2 && (
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="deliverable_review">산출물 리뷰</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {MARKDOWN_HELP}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <MentionInput
+            id="deliverable_review"
+            placeholder="산출물 리뷰를 입력하세요 (@멘션 가능)"
+            rows={6}
+            value={formData.deliverable_review}
+            onChange={(v) => updateField('deliverable_review', v)}
+            members={members}
+          />
+        </div>
+      )}
+      {step === 3 && (
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="retrospective">회고</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {MARKDOWN_HELP}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <MentionInput
+            id="retrospective"
+            placeholder="회고 내용을 입력하세요 (@멘션 가능)"
+            rows={6}
+            value={formData.retrospective}
+            onChange={(v) => updateField('retrospective', v)}
+            members={members}
+          />
+        </div>
+      )}
+      {step === 4 && (
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="next_week_plan">다음 주 계획</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="size-3.5 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {MARKDOWN_HELP}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <MentionInput
+            id="next_week_plan"
+            placeholder="다음 주 계획을 입력하세요 (@멘션 가능)"
+            rows={6}
+            value={formData.next_week_plan}
+            onChange={(v) => updateField('next_week_plan', v)}
+            members={members}
+          />
+        </div>
+      )}
     </div>
   )
 
@@ -285,7 +455,10 @@ export default function MeetingsPage() {
           open={createOpen}
           onOpenChange={(open) => {
             setCreateOpen(open)
-            if (!open) setFormData(getEmptyForm())
+            if (!open) {
+              setFormData(getEmptyForm())
+              setStep(0)
+            }
           }}
         >
           <DialogTrigger asChild>
@@ -302,15 +475,27 @@ export default function MeetingsPage() {
               </DialogDescription>
             </DialogHeader>
             <ScrollArea className="max-h-[60vh] pr-4">
-              {formFields}
+              {stepContent}
             </ScrollArea>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">취소</Button>
-              </DialogClose>
-              <Button onClick={handleCreate} disabled={submitting}>
-                {submitting ? '생성 중...' : '생성'}
-              </Button>
+            <DialogFooter className="flex-row justify-end sm:justify-end">
+              <div className="flex gap-2">
+                {step > 0 && (
+                  <Button variant="outline" onClick={() => setStep(step - 1)}>
+                    <ChevronLeft className="size-4" />
+                    이전
+                  </Button>
+                )}
+                {step < STEP_LABELS.length - 1 ? (
+                  <Button onClick={() => setStep(step + 1)}>
+                    다음
+                    <ChevronRight className="size-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={handleCreate} disabled={submitting}>
+                    {submitting ? '생성 중...' : '생성'}
+                  </Button>
+                )}
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -332,119 +517,130 @@ export default function MeetingsPage() {
       ) : (
         /* Meeting Cards */
         <div className="grid gap-4">
-          {meetings.map((meeting) => (
-            <Card key={meeting.id} className="transition-shadow hover:shadow-md">
-              <CardHeader>
-                <CardTitle className="text-lg">
-                  {meeting.title}
-                </CardTitle>
-                <CardDescription className="flex items-center gap-3">
-                  <span className="inline-flex items-center gap-1">
-                    <Calendar className="size-3.5" />
-                    {format(new Date(meeting.meeting_date), 'yyyy년 M월 d일', {
+          {meetings.map((meeting) => {
+            const userColor = getUserColor(meeting.created_by, (meeting.profiles as any)?.user_color)
+            return (
+              <Card key={meeting.id} className="transition-shadow hover:shadow-md cursor-pointer" onClick={() => openDetail(meeting)}>
+                <CardHeader>
+                  <CardTitle className="text-lg">
+                    {meeting.title}
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-3 flex-wrap">
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar className="size-3.5" />
+                      {format(new Date(meeting.meeting_date), 'yyyy년 M월 d일', {
+                        locale: ko,
+                      })}
+                    </span>
+                    {meeting.profiles?.display_name && (
+                      <>
+                        <Separator orientation="vertical" className="h-3.5" />
+                        <div className="flex items-center gap-1.5">
+                          <Avatar className="size-4.5">
+                            {meeting.profiles.avatar_url && (
+                              <AvatarImage src={meeting.profiles.avatar_url} />
+                            )}
+                            <AvatarFallback className={`text-[9px] font-bold ${userColor.bg} ${userColor.text}`}>
+                              {meeting.profiles.display_name.slice(0, 1).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{meeting.profiles.display_name}</span>
+                        </div>
+                      </>
+                    )}
+                    {meeting.edit_status === 'edited' && (
+                      <>
+                        <Separator orientation="vertical" className="h-3.5" />
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          수정됨
+                          {(meeting as any).editor?.display_name && ` · ${(meeting as any).editor.display_name}`}
+                          {meeting.edited_at && ` · ${format(new Date(meeting.edited_at), 'M/d HH:mm')}`}
+                        </Badge>
+                      </>
+                    )}
+                  </CardDescription>
+                  {canEditOrDelete(meeting) && (
+                    <CardAction onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm">
+                            <MoreHorizontal className="size-4" />
+                            <span className="sr-only">메뉴</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(meeting)}>
+                            <Pencil className="mr-2 size-4" />
+                            수정
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => openDelete(meeting)}
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            삭제
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </CardAction>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {meeting.progress_review && (
+                      <div className="rounded-md bg-muted/50 p-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          진행 상황
+                        </p>
+                        <p className="text-sm leading-relaxed">
+                          {truncate(meeting.progress_review)}
+                        </p>
+                      </div>
+                    )}
+                    {meeting.deliverable_review && (
+                      <div className="rounded-md bg-muted/50 p-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          산출물 리뷰
+                        </p>
+                        <p className="text-sm leading-relaxed">
+                          {truncate(meeting.deliverable_review)}
+                        </p>
+                      </div>
+                    )}
+                    {meeting.retrospective && (
+                      <div className="rounded-md bg-muted/50 p-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          회고
+                        </p>
+                        <p className="text-sm leading-relaxed">
+                          {truncate(meeting.retrospective)}
+                        </p>
+                      </div>
+                    )}
+                    {meeting.next_week_plan && (
+                      <div className="rounded-md bg-muted/50 p-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">
+                          다음 주 계획
+                        </p>
+                        <p className="text-sm leading-relaxed">
+                          {truncate(meeting.next_week_plan)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <p className="text-xs text-muted-foreground">
+                    작성일:{' '}
+                    {format(new Date(meeting.created_at), 'yyyy년 M월 d일 HH:mm', {
                       locale: ko,
                     })}
-                  </span>
-                  {meeting.profiles?.display_name && (
-                    <>
-                      <Separator orientation="vertical" className="h-3.5" />
-                      <div className="flex items-center gap-1.5">
-                        <Avatar className="size-4.5">
-                          {meeting.profiles.avatar_url && (
-                            <AvatarImage src={meeting.profiles.avatar_url} />
-                          )}
-                          <AvatarFallback className={`text-[9px] font-bold ${getUserColor(meeting.created_by).bg} ${getUserColor(meeting.created_by).text}`}>
-                            {meeting.profiles.display_name.slice(0, 1).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span>{meeting.profiles.display_name}</span>
-                      </div>
-                    </>
-                  )}
-                </CardDescription>
-                <CardAction>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm">
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">메뉴</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openDetail(meeting)}>
-                        <Eye className="mr-2 size-4" />
-                        상세 보기
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openEdit(meeting)}>
-                        <Pencil className="mr-2 size-4" />
-                        수정
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => openDelete(meeting)}
-                      >
-                        <Trash2 className="mr-2 size-4" />
-                        삭제
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </CardAction>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {meeting.progress_review && (
-                    <div className="rounded-md bg-muted/50 p-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        진행 상황
-                      </p>
-                      <p className="text-sm leading-relaxed">
-                        {truncate(meeting.progress_review)}
-                      </p>
-                    </div>
-                  )}
-                  {meeting.deliverable_review && (
-                    <div className="rounded-md bg-muted/50 p-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        산출물 리뷰
-                      </p>
-                      <p className="text-sm leading-relaxed">
-                        {truncate(meeting.deliverable_review)}
-                      </p>
-                    </div>
-                  )}
-                  {meeting.retrospective && (
-                    <div className="rounded-md bg-muted/50 p-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        회고
-                      </p>
-                      <p className="text-sm leading-relaxed">
-                        {truncate(meeting.retrospective)}
-                      </p>
-                    </div>
-                  )}
-                  {meeting.next_week_plan && (
-                    <div className="rounded-md bg-muted/50 p-3">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        다음 주 계획
-                      </p>
-                      <p className="text-sm leading-relaxed">
-                        {truncate(meeting.next_week_plan)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-              <CardFooter>
-                <p className="text-xs text-muted-foreground">
-                  작성일:{' '}
-                  {format(new Date(meeting.created_at), 'yyyy년 M월 d일 HH:mm', {
-                    locale: ko,
-                  })}
-                </p>
-              </CardFooter>
-            </Card>
-          ))}
+                  </p>
+                </CardFooter>
+              </Card>
+            )
+          })}
         </div>
       )}
 
@@ -461,7 +657,7 @@ export default function MeetingsPage() {
             <>
               <DialogHeader>
                 <DialogTitle>{selectedMeeting.title}</DialogTitle>
-                <DialogDescription className="flex items-center gap-3">
+                <DialogDescription className="flex items-center gap-3 flex-wrap">
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="size-3.5" />
                     {format(
@@ -476,6 +672,15 @@ export default function MeetingsPage() {
                       <span>{selectedMeeting.profiles.display_name}</span>
                     </>
                   )}
+                  {selectedMeeting.edit_status === 'edited' && (
+                    <>
+                      <Separator orientation="vertical" className="h-3.5" />
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        수정됨
+                        {(selectedMeeting as any).editor?.display_name && ` · ${(selectedMeeting as any).editor.display_name}`}
+                      </Badge>
+                    </>
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <ScrollArea className="max-h-[60vh] pr-4">
@@ -485,9 +690,7 @@ export default function MeetingsPage() {
                       <Badge variant="outline" className="mb-2">
                         진행 상황 리뷰
                       </Badge>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                        {selectedMeeting.progress_review}
-                      </p>
+                      <MarkdownRenderer content={selectedMeeting.progress_review} />
                     </div>
                   )}
                   {selectedMeeting.deliverable_review && (
@@ -497,9 +700,7 @@ export default function MeetingsPage() {
                         <Badge variant="outline" className="mb-2">
                           산출물 리뷰
                         </Badge>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {selectedMeeting.deliverable_review}
-                        </p>
+                        <MarkdownRenderer content={selectedMeeting.deliverable_review} />
                       </div>
                     </>
                   )}
@@ -510,9 +711,7 @@ export default function MeetingsPage() {
                         <Badge variant="outline" className="mb-2">
                           회고
                         </Badge>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {selectedMeeting.retrospective}
-                        </p>
+                        <MarkdownRenderer content={selectedMeeting.retrospective} />
                       </div>
                     </>
                   )}
@@ -523,9 +722,7 @@ export default function MeetingsPage() {
                         <Badge variant="outline" className="mb-2">
                           다음 주 계획
                         </Badge>
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                          {selectedMeeting.next_week_plan}
-                        </p>
+                        <MarkdownRenderer content={selectedMeeting.next_week_plan} />
                       </div>
                     </>
                   )}
@@ -535,15 +732,17 @@ export default function MeetingsPage() {
                 <DialogClose asChild>
                   <Button variant="outline">닫기</Button>
                 </DialogClose>
-                <Button
-                  onClick={() => {
-                    setDetailOpen(false)
-                    openEdit(selectedMeeting)
-                  }}
-                >
-                  <Pencil />
-                  수정
-                </Button>
+                {canEditOrDelete(selectedMeeting) && (
+                  <Button
+                    onClick={() => {
+                      setDetailOpen(false)
+                      openEdit(selectedMeeting)
+                    }}
+                  >
+                    <Pencil />
+                    수정
+                  </Button>
+                )}
               </DialogFooter>
             </>
           )}
@@ -558,6 +757,7 @@ export default function MeetingsPage() {
           if (!open) {
             setSelectedMeeting(null)
             setFormData(getEmptyForm())
+            setStep(0)
           }
         }}
       >
@@ -569,15 +769,27 @@ export default function MeetingsPage() {
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] pr-4">
-            {formFields}
+            {stepContent}
           </ScrollArea>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">취소</Button>
-            </DialogClose>
-            <Button onClick={handleUpdate} disabled={submitting}>
-              {submitting ? '저장 중...' : '저장'}
-            </Button>
+          <DialogFooter className="flex-row justify-end sm:justify-end">
+            <div className="flex gap-2">
+              {step > 0 && (
+                <Button variant="outline" onClick={() => setStep(step - 1)}>
+                  <ChevronLeft className="size-4" />
+                  이전
+                </Button>
+              )}
+              {step < STEP_LABELS.length - 1 ? (
+                <Button onClick={() => setStep(step + 1)}>
+                  다음
+                  <ChevronRight className="size-4" />
+                </Button>
+              ) : (
+                <Button onClick={handleUpdate} disabled={submitting}>
+                  {submitting ? '저장 중...' : '저장'}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

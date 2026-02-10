@@ -7,6 +7,7 @@ const pageTitles: Record<string, string> = {
   '/resources': '리소스',
   '/board': '보드',
   '/portfolio': '포트폴리오',
+  '/profile': '내 정보',
 }
 
 export function Header() {

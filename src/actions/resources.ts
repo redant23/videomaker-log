@@ -4,13 +4,44 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function getMessages() {
   const supabase = await createClient()
+  const fourteenDaysAgo = new Date()
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+
   const { data, error } = await supabase
     .from('resources')
-    .select('*, profiles(display_name, avatar_url)')
+    .select('*, profiles(id, display_name, avatar_url, user_color)')
+    .gte('created_at', fourteenDaysAgo.toISOString())
     .order('created_at', { ascending: true })
-    .limit(100)
+    .limit(200)
 
-  if (error) throw error
+  if (error) {
+    // user_color 컬럼이 아직 없을 경우 fallback
+    const { data: fb, error: fbErr } = await supabase
+      .from('resources')
+      .select('*, profiles(id, display_name, avatar_url)')
+      .order('created_at', { ascending: true })
+      .limit(200)
+    if (fbErr) throw fbErr
+    return fb
+  }
+  return data
+}
+
+export async function getArchivedMessages() {
+  const supabase = await createClient()
+  const fourteenDaysAgo = new Date()
+  fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
+
+  const { data, error } = await supabase
+    .from('resources')
+    .select('*, profiles(id, display_name, avatar_url, user_color)')
+    .lt('created_at', fourteenDaysAgo.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    return []
+  }
   return data
 }
 

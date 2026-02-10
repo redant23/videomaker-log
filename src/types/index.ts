@@ -2,6 +2,8 @@ export type Profile = {
   id: string
   display_name: string
   avatar_url: string | null
+  role: 'master' | 'member'
+  user_color: string | null
   created_at: string
   updated_at: string
 }
@@ -15,9 +17,13 @@ export type Meeting = {
   retrospective: string
   next_week_plan: string
   created_by: string
+  edited_by: string | null
+  edited_at: string | null
+  edit_status: 'original' | 'edited'
   created_at: string
   updated_at: string
   profiles?: Profile
+  editor?: Profile
 }
 
 export type Resource = {
@@ -37,6 +43,7 @@ export type Task = {
   priority: 'low' | 'medium' | 'high'
   assignee_id: string | null
   position: number
+  archived_at: string | null
   created_by: string
   created_at: string
   updated_at: string
@@ -53,11 +60,20 @@ export type PortfolioItem = {
   thumbnail_url: string | null
   tags: string[]
   account: string | null
-  is_public: boolean
   created_by: string
   created_at: string
   updated_at: string
   profiles?: Profile
+}
+
+export type EmailQueue = {
+  id: string
+  to_email: string
+  subject: string
+  html_body: string
+  scheduled_for: string
+  sent_at: string | null
+  created_at: string
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done'
