@@ -339,9 +339,9 @@ export default function ResourcesPage() {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
-      <Card className="flex flex-1 flex-col overflow-hidden">
+      <Card className="flex flex-1 min-h-0 flex-col overflow-hidden p-0 gap-0 border-none md:border shadow-none md:shadow-sm">
         {/* Header */}
-        <div className="flex items-center gap-2 border-b px-4 py-3">
+        <div className="flex items-center gap-2 border-b px-4 py-3 shrink-0">
           <MessageSquare className="text-muted-foreground size-5" />
           <h2 className="text-lg font-semibold">리소스 공유</h2>
           <span className="text-muted-foreground text-sm">
@@ -350,7 +350,7 @@ export default function ResourcesPage() {
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 min-h-0">
           <div className="flex flex-col gap-1 p-4">
             {/* 이전 대화 아카이브 */}
             <Collapsible open={showArchive} onOpenChange={(open) => {
@@ -480,7 +480,7 @@ export default function ResourcesPage() {
         </ScrollArea>
 
         {/* Input with mention support */}
-        <div className="border-t p-4">
+        <div className="border-t p-4 shrink-0">
           <form onSubmit={handleSubmit} className="relative flex items-center gap-2">
             {/* 멘션 자동완성 드롭다운 */}
             {showSuggestions && (
