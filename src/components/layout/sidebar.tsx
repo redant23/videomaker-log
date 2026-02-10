@@ -72,7 +72,7 @@ export function Sidebar() {
       : '?'
 
   return (
-    <aside className="flex h-screen w-60 flex-col border-r bg-sidebar p-4">
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col overflow-y-auto border-r bg-sidebar p-4">
       <div className="mb-6">
         <Link href="/meetings">
           <h1 className="text-lg font-bold text-sidebar-foreground">Videomaker Log</h1>
