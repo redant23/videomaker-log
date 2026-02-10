@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 
 import { Meeting } from '@/types'
+import { getUserColor } from '@/lib/colors'
 import {
   getMeetings,
   createMeeting,
@@ -55,6 +56,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 type FormData = {
   title: string
@@ -346,7 +348,17 @@ export default function MeetingsPage() {
                   {meeting.profiles?.display_name && (
                     <>
                       <Separator orientation="vertical" className="h-3.5" />
-                      <span>{meeting.profiles.display_name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <Avatar className="size-4.5">
+                          {meeting.profiles.avatar_url && (
+                            <AvatarImage src={meeting.profiles.avatar_url} />
+                          )}
+                          <AvatarFallback className={`text-[9px] font-bold ${getUserColor(meeting.created_by).bg} ${getUserColor(meeting.created_by).text}`}>
+                            {meeting.profiles.display_name.slice(0, 1).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span>{meeting.profiles.display_name}</span>
+                      </div>
                     </>
                   )}
                 </CardDescription>

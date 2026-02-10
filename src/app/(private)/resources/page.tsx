@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { getMessages, createMessage, deleteMessage } from '@/actions/resources'
 import type { Resource } from '@/types'
+import { getUserColor } from '@/lib/colors'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -122,6 +123,7 @@ export default function ResourcesPage() {
                 const isMine = message.author_id === currentUserId
                 const displayName =
                   message.profiles?.display_name ?? '알 수 없음'
+                const userColor = getUserColor(message.author_id)
 
                 return (
                   <div
@@ -135,7 +137,7 @@ export default function ResourcesPage() {
                           alt={displayName}
                         />
                       ) : null}
-                      <AvatarFallback>
+                      <AvatarFallback className={`${userColor.bg} ${userColor.text} font-medium border !border-white/10`}>
                         {getInitials(displayName)}
                       </AvatarFallback>
                     </Avatar>

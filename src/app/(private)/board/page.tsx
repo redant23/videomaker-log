@@ -146,7 +146,7 @@ function TaskCardContent({
           </Badge>
           <div className="flex items-center gap-1">
             <Avatar size="sm" className="size-4">
-              <AvatarFallback className={`text-[8px] text-white font-bold border-none transition-colors ${userColor.bg}`}>
+              <AvatarFallback className={`text-[8px] font-bold border !border-white/20 transition-colors ${userColor.bg} ${userColor.text}`}>
                 {authorInitials}
               </AvatarFallback>
             </Avatar>

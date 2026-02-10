@@ -122,7 +122,7 @@ export function Sidebar() {
                   className="flex items-center gap-2.5 rounded-md px-2 py-1.5"
                 >
                   <Avatar size="sm" className="size-5">
-                    <AvatarFallback className={cn("text-[10px] text-white font-bold border-none", userColor.bg)}>
+                    <AvatarFallback className={cn("text-[10px] font-bold border !border-white/20", userColor.bg, userColor.text)}>
                       {memberInitial}
                     </AvatarFallback>
                   </Avatar>
@@ -145,7 +145,7 @@ export function Sidebar() {
       {/* 로그인 사용자 정보 */}
       <div className="mb-3 flex items-center gap-3 rounded-md px-2 py-2">
         <Avatar size="sm">
-          <AvatarFallback className={cn("text-white font-bold border-none", getUserColor(currentUserId || 'default').bg)}>
+          <AvatarFallback className={cn("font-bold border !border-white/20", getUserColor(currentUserId || 'default').bg, getUserColor(currentUserId || 'default').text)}>
             {initials}
           </AvatarFallback>
         </Avatar>
