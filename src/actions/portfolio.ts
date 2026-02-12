@@ -10,7 +10,7 @@ function extractVideoInfo(url: string): { video_type: string; video_id: string }
   if (ytMatch) return { video_type: 'youtube', video_id: ytMatch[1] }
 
   const igMatch = url.match(
-    /instagram\.com\/(?:p|reel|tv)\/([a-zA-Z0-9_-]+)/
+    /instagram\.com\/(?:p|reels?|tv)\/([a-zA-Z0-9_-]+)/
   )
   if (igMatch) return { video_type: 'instagram', video_id: igMatch[1] }
 
@@ -71,6 +71,7 @@ export async function createPortfolioItem(formData: {
   tags: string[]
   account?: string
   created_by?: string
+  thumbnail_url?: string
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -78,9 +79,8 @@ export async function createPortfolioItem(formData: {
 
   const { video_type, video_id } = extractVideoInfo(formData.video_url)
 
-  const thumbnail_url = video_type === 'youtube'
-    ? `https://img.youtube.com/vi/${video_id}/hqdefault.jpg`
-    : null
+  const thumbnail_url = formData.thumbnail_url
+    || (video_type === 'youtube' ? `https://img.youtube.com/vi/${video_id}/hqdefault.jpg` : null)
 
   const { error } = await supabase.from('portfolio_items').insert({
     title: formData.title,
@@ -104,26 +104,32 @@ export async function updatePortfolioItem(id: string, formData: {
   video_url: string
   tags: string[]
   account?: string
+  thumbnail_url?: string
+  created_by?: string
 }) {
   const supabase = await createClient()
   const { video_type, video_id } = extractVideoInfo(formData.video_url)
 
-  const thumbnail_url = video_type === 'youtube'
-    ? `https://img.youtube.com/vi/${video_id}/hqdefault.jpg`
-    : null
+  const thumbnail_url = formData.thumbnail_url
+    || (video_type === 'youtube' ? `https://img.youtube.com/vi/${video_id}/hqdefault.jpg` : null)
+
+  const updateData: Record<string, unknown> = {
+    title: formData.title,
+    description: formData.description || null,
+    video_url: formData.video_url,
+    video_type,
+    video_id,
+    thumbnail_url,
+    tags: formData.tags,
+    account: formData.account || null,
+  }
+  if (formData.created_by) {
+    updateData.created_by = formData.created_by
+  }
 
   const { error } = await supabase
     .from('portfolio_items')
-    .update({
-      title: formData.title,
-      description: formData.description || null,
-      video_url: formData.video_url,
-      video_type,
-      video_id,
-      thumbnail_url,
-      tags: formData.tags,
-      account: formData.account || null,
-    })
+    .update(updateData)
     .eq('id', id)
 
   if (error) throw error

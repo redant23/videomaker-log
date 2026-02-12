@@ -37,16 +37,33 @@ type FormData = {
   tags: string
   account: string
   created_by: string
+  thumbnail_url: string
 }
 
-const emptyForm: FormData = { title: '', description: '', video_url: '', tags: '', account: '', created_by: '' }
+const emptyForm: FormData = { title: '', description: '', video_url: '', tags: '', account: '', created_by: '', thumbnail_url: '' }
 
-function VideoTypeIcon({ type }: { type: PortfolioItem['video_type'] }) {
-  switch (type) {
-    case 'youtube': return <Youtube className="size-4 text-red-500" />
-    case 'instagram': return <Instagram className="size-4 text-pink-500" />
-    default: return <Globe className="size-4 text-muted-foreground" />
+function isInstagramCdn(url: string): boolean {
+  try {
+    const { hostname } = new URL(url)
+    return hostname.endsWith('fbcdn.net') || hostname.endsWith('cdninstagram.com')
+  } catch {
+    return false
   }
+}
+
+function proxyThumbnail(url: string): string {
+  if (isInstagramCdn(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
+
+function VideoTypeIcon({ type, url }: { type: PortfolioItem['video_type']; url?: string }) {
+  const isYt = type === 'youtube' || (url && /youtube\.com|youtu\.be/.test(url))
+  const isIg = type === 'instagram' || (url && /instagram\.com/.test(url))
+  if (isYt) return <Youtube className="size-4 text-red-500" />
+  if (isIg) return <Instagram className="size-4 text-pink-500" />
+  return <Globe className="size-4 text-muted-foreground" />
 }
 
 export default function PortfolioPage() {
@@ -54,6 +71,7 @@ export default function PortfolioPage() {
   const [loading, setLoading] = useState(true)
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [activeUser, setActiveUser] = useState<string | null>(null)
+  const [activePlatform, setActivePlatform] = useState<string | null>(null)
   const [members, setMembers] = useState<Profile[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isMaster, setIsMaster] = useState(false)
@@ -89,13 +107,13 @@ export default function PortfolioPage() {
 
   const fetchItems = useCallback(async () => {
     try {
-      const data = await getPortfolioItems(activeUser ? { created_by: activeUser } : undefined)
+      const data = await getPortfolioItems()
       setItems(data ?? [])
     } catch (err) {
       console.error('포트폴리오 로딩 실패:', err)
       toast.error('포트폴리오를 불러오는데 실패했습니다.')
     } finally { setLoading(false) }
-  }, [activeUser])
+  }, [])
 
   useEffect(() => { setLoading(true); fetchItems() }, [fetchItems])
 
@@ -106,9 +124,15 @@ export default function PortfolioPage() {
   }, [items])
 
   const filteredItems = useMemo(() => {
-    if (!activeTag) return items
-    return items.filter((item) => item.tags?.includes(activeTag))
-  }, [items, activeTag])
+    let result = items
+    if (activeUser) result = result.filter((item) => item.created_by === activeUser)
+    if (activePlatform) result = result.filter((item) => {
+      if (activePlatform === 'instagram') return item.video_type === 'instagram' || /instagram\.com/.test(item.video_url)
+      return item.video_type === activePlatform
+    })
+    if (activeTag) result = result.filter((item) => item.tags?.includes(activeTag))
+    return result
+  }, [items, activeUser, activePlatform, activeTag])
 
   function openCreateDialog() {
     setEditingItem(null)
@@ -125,6 +149,7 @@ export default function PortfolioPage() {
       tags: item.tags?.join(', ') ?? '',
       account: item.account ?? '',
       created_by: item.created_by,
+      thumbnail_url: item.thumbnail_url ?? '',
     })
     setDialogOpen(true)
   }
@@ -139,6 +164,9 @@ export default function PortfolioPage() {
           ...prev,
           title: prev.title || meta.title,
           description: prev.description || meta.description,
+          tags: prev.tags || (meta.tags.length > 0 ? meta.tags.join(', ') : ''),
+          account: prev.account || meta.account,
+          thumbnail_url: prev.thumbnail_url || meta.thumbnail_url,
         }))
         toast.success('영상 정보를 가져왔습니다.')
       } else {
@@ -163,6 +191,8 @@ export default function PortfolioPage() {
           video_url: formData.video_url.trim(),
           tags,
           account: formData.account.trim() || undefined,
+          thumbnail_url: formData.thumbnail_url || undefined,
+          created_by: formData.created_by || undefined,
         })
         toast.success('포트폴리오가 수정되었습니다.')
       } else {
@@ -173,6 +203,7 @@ export default function PortfolioPage() {
           tags,
           account: formData.account.trim() || undefined,
           created_by: formData.created_by || undefined,
+          thumbnail_url: formData.thumbnail_url || undefined,
         })
         toast.success('포트폴리오가 등록되었습니다.')
       }
@@ -220,6 +251,17 @@ export default function PortfolioPage() {
         ) : null
       })()}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Film className="size-4 text-muted-foreground" />
+        <Badge variant={activePlatform === null ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActivePlatform(null)}>전체</Badge>
+        <Badge variant={activePlatform === 'youtube' ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActivePlatform(activePlatform === 'youtube' ? null : 'youtube')}>
+          <Youtube className="size-3" />YouTube
+        </Badge>
+        <Badge variant={activePlatform === 'instagram' ? 'default' : 'outline'} className="cursor-pointer" onClick={() => setActivePlatform(activePlatform === 'instagram' ? null : 'instagram')}>
+          <Instagram className="size-3" />Instagram
+        </Badge>
+      </div>
+
       {allTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           <Tag className="size-4 text-muted-foreground" />
@@ -244,9 +286,9 @@ export default function PortfolioPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredItems.map((item) => (
             <Card key={item.id} className="group overflow-hidden py-0 gap-0">
-              <button type="button" className="relative aspect-video w-full cursor-pointer overflow-hidden bg-muted" onClick={() => setPreviewItem(item)}>
-                {item.video_type === 'youtube' && item.thumbnail_url ? (
-                  <img src={item.thumbnail_url} alt={item.title} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+              <button type="button" className={cn("relative aspect-video w-full cursor-pointer overflow-hidden", item.thumbnail_url && isInstagramCdn(item.thumbnail_url) ? 'bg-black' : 'bg-muted')} onClick={() => setPreviewItem(item)}>
+                {item.thumbnail_url ? (
+                  <img src={proxyThumbnail(item.thumbnail_url)} alt={item.title} referrerPolicy="no-referrer" className={cn("h-full w-full transition-transform group-hover:scale-105", isInstagramCdn(item.thumbnail_url) ? 'object-contain' : 'object-cover')} />
                 ) : item.video_type === 'instagram' ? (
                   <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400">
                     <Instagram className="size-12 text-white" />
@@ -260,7 +302,7 @@ export default function PortfolioPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <VideoTypeIcon type={item.video_type} />
+                      <VideoTypeIcon type={item.video_type} url={item.video_url} />
                       <h3 className="truncate text-sm font-semibold">{item.title}</h3>
                     </div>
                     {item.account && (
@@ -365,7 +407,7 @@ export default function PortfolioPage() {
                 </div>
               )}
             </div>
-            {!editingItem && members.length > 1 && (
+            {members.length > 1 && (
               <div className="space-y-2">
                 <Label>제작자</Label>
                 <Select value={formData.created_by} onValueChange={(v) => setFormData({ ...formData, created_by: v })}>
@@ -391,7 +433,7 @@ export default function PortfolioPage() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <VideoTypeIcon type={previewItem?.video_type ?? 'other'} />
+              <VideoTypeIcon type={previewItem?.video_type ?? 'other'} url={previewItem?.video_url} />
               {previewItem?.title}
             </DialogTitle>
             {previewItem?.account && <DialogDescription>{previewItem.account}</DialogDescription>}
@@ -402,11 +444,13 @@ export default function PortfolioPage() {
                 <div className="aspect-video w-full overflow-hidden rounded-md">
                   <iframe src={`https://www.youtube.com/embed/${previewItem.video_id}`} title={previewItem.title} className="h-full w-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                 </div>
-              ) : previewItem.video_type === 'instagram' ? (
-                <div className="flex aspect-video items-center justify-center rounded-md bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400">
-                  <div className="text-center text-white">
-                    <Instagram className="mx-auto size-12" /><p className="mt-2 text-sm">Instagram Reel</p>
-                    <Button variant="secondary" size="sm" className="mt-3" onClick={() => window.open(previewItem.video_url, '_blank')}><ExternalLink />Instagram에서 열기</Button>
+              ) : previewItem.thumbnail_url ? (
+                <div className={cn("relative aspect-video w-full overflow-hidden rounded-md cursor-pointer group/preview", previewItem.thumbnail_url && isInstagramCdn(previewItem.thumbnail_url) ? 'bg-black' : 'bg-muted')} onClick={() => window.open(previewItem.video_url, '_blank')}>
+                  <img src={proxyThumbnail(previewItem.thumbnail_url)} alt={previewItem.title} referrerPolicy="no-referrer" className={cn("h-full w-full transition-transform group-hover/preview:scale-105", isInstagramCdn(previewItem.thumbnail_url) ? 'object-contain' : 'object-cover')} />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover/preview:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-black">
+                      <ExternalLink className="size-4" />영상 열기
+                    </div>
                   </div>
                 </div>
               ) : (

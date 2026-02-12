@@ -15,8 +15,24 @@ function getVideoIcon(type: string) {
   }
 }
 
+function isInstagramCdn(url: string): boolean {
+  try {
+    const { hostname } = new URL(url)
+    return hostname.endsWith('fbcdn.net') || hostname.endsWith('cdninstagram.com')
+  } catch {
+    return false
+  }
+}
+
+function proxyThumbnail(url: string): string {
+  if (isInstagramCdn(url)) {
+    return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
+
 function getThumbnailUrl(item: { video_type: string; video_id: string; thumbnail_url: string | null }) {
-  if (item.thumbnail_url) return item.thumbnail_url
+  if (item.thumbnail_url) return proxyThumbnail(item.thumbnail_url)
   if (item.video_type === 'youtube') return `https://img.youtube.com/vi/${item.video_id}/hqdefault.jpg`
   return null
 }
@@ -94,12 +110,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
                   className="group block rounded-xl overflow-hidden bg-white/5 border border-white/10 hover:border-violet-500/50 transition-all hover:shadow-lg hover:shadow-violet-500/10"
                 >
                   {/* Thumbnail */}
-                  <div className="aspect-video bg-gray-800 relative overflow-hidden">
+                  <div className={`aspect-video relative overflow-hidden ${item.thumbnail_url && isInstagramCdn(item.thumbnail_url) ? 'bg-black' : 'bg-gray-800'}`}>
                     {thumbnail ? (
                       <img
                         src={thumbnail}
                         alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        referrerPolicy="no-referrer"
+                        className={`w-full h-full group-hover:scale-105 transition-transform duration-300 ${item.thumbnail_url && isInstagramCdn(item.thumbnail_url) ? 'object-contain' : 'object-cover'}`}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
