@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2, Crown } from 'lucide-react'
+import { Plus, Film, ExternalLink, Pencil, Trash2, MoreHorizontal, Tag, Youtube, Instagram, Globe, Users, Loader2, Crown, Eye, RefreshCw, ArrowUpDown, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 import type { PortfolioItem, Profile } from '@/types'
 import { createClient } from '@/lib/supabase/client'
 import {
-  getPortfolioItems, createPortfolioItem, updatePortfolioItem, deletePortfolioItem, getDistinctAccounts,
+  getPortfolioItems, createPortfolioItem, updatePortfolioItem, deletePortfolioItem, getDistinctAccounts, refreshPortfolioMetadata,
 } from '@/actions/portfolio'
 import { fetchVideoMetadata } from '@/lib/video-metadata'
 import { getUserColor } from '@/lib/colors'
@@ -38,9 +38,20 @@ type FormData = {
   account: string
   created_by: string
   thumbnail_url: string
+  upload_date: string
+  view_count: number | null
 }
 
-const emptyForm: FormData = { title: '', description: '', video_url: '', tags: '', account: '', created_by: '', thumbnail_url: '' }
+const emptyForm: FormData = { title: '', description: '', video_url: '', tags: '', account: '', created_by: '', thumbnail_url: '', upload_date: '', view_count: null }
+
+function formatViewCount(count: number): string {
+  if (count >= 100000000) return `${(count / 100000000).toFixed(1)}억`
+  if (count >= 10000) return `${(count / 10000).toFixed(1)}만`
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}천`
+  return count.toLocaleString()
+}
+
+type SortOption = 'created_desc' | 'created_asc' | 'upload_desc' | 'upload_asc'
 
 function isInstagramCdn(url: string): boolean {
   try {
@@ -83,6 +94,8 @@ export default function PortfolioPage() {
   const [accounts, setAccounts] = useState<string[]>([])
   const [fetchingMeta, setFetchingMeta] = useState(false)
   const [showAccountSuggestions, setShowAccountSuggestions] = useState(false)
+  const [sortOption, setSortOption] = useState<SortOption>('created_desc')
+  const [refreshingId, setRefreshingId] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -131,8 +144,34 @@ export default function PortfolioPage() {
       return item.video_type === activePlatform
     })
     if (activeTag) result = result.filter((item) => item.tags?.includes(activeTag))
-    return result
-  }, [items, activeUser, activePlatform, activeTag])
+
+    const sorted = [...result]
+    switch (sortOption) {
+      case 'created_desc':
+        sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        break
+      case 'created_asc':
+        sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        break
+      case 'upload_desc':
+        sorted.sort((a, b) => {
+          if (!a.upload_date && !b.upload_date) return 0
+          if (!a.upload_date) return 1
+          if (!b.upload_date) return -1
+          return new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime()
+        })
+        break
+      case 'upload_asc':
+        sorted.sort((a, b) => {
+          if (!a.upload_date && !b.upload_date) return 0
+          if (!a.upload_date) return 1
+          if (!b.upload_date) return -1
+          return new Date(a.upload_date).getTime() - new Date(b.upload_date).getTime()
+        })
+        break
+    }
+    return sorted
+  }, [items, activeUser, activePlatform, activeTag, sortOption])
 
   function openCreateDialog() {
     setEditingItem(null)
@@ -150,6 +189,8 @@ export default function PortfolioPage() {
       account: item.account ?? '',
       created_by: item.created_by,
       thumbnail_url: item.thumbnail_url ?? '',
+      upload_date: item.upload_date ?? '',
+      view_count: item.view_count ?? null,
     })
     setDialogOpen(true)
   }
@@ -167,6 +208,8 @@ export default function PortfolioPage() {
           tags: prev.tags || (meta.tags.length > 0 ? meta.tags.join(', ') : ''),
           account: prev.account || meta.account,
           thumbnail_url: prev.thumbnail_url || meta.thumbnail_url,
+          upload_date: prev.upload_date || meta.upload_date,
+          view_count: prev.view_count ?? meta.view_count,
         }))
         toast.success('영상 정보를 가져왔습니다.')
       } else {
@@ -193,6 +236,8 @@ export default function PortfolioPage() {
           account: formData.account.trim() || undefined,
           thumbnail_url: formData.thumbnail_url || undefined,
           created_by: formData.created_by || undefined,
+          upload_date: formData.upload_date || undefined,
+          view_count: formData.view_count ?? undefined,
         })
         toast.success('포트폴리오가 수정되었습니다.')
       } else {
@@ -204,6 +249,8 @@ export default function PortfolioPage() {
           account: formData.account.trim() || undefined,
           created_by: formData.created_by || undefined,
           thumbnail_url: formData.thumbnail_url || undefined,
+          upload_date: formData.upload_date || undefined,
+          view_count: formData.view_count ?? undefined,
         })
         toast.success('포트폴리오가 등록되었습니다.')
       }
@@ -221,6 +268,25 @@ export default function PortfolioPage() {
     catch (err) { console.error('포트폴리오 삭제 실패:', err); toast.error('삭제에 실패했습니다.') }
   }
 
+  async function handleRefreshMetadata(item: PortfolioItem) {
+    setRefreshingId(item.id)
+    try {
+      const meta = await fetchVideoMetadata(item.video_url)
+      if (meta) {
+        await refreshPortfolioMetadata(item.id, {
+          upload_date: meta.upload_date || undefined,
+          view_count: meta.view_count ?? undefined,
+          thumbnail_url: meta.thumbnail_url || undefined,
+        })
+        toast.success('메타데이터가 갱신되었습니다.')
+        fetchItems()
+      } else {
+        toast.error('메타데이터를 가져올 수 없습니다.')
+      }
+    } catch { toast.error('메타데이터 갱신 실패') }
+    finally { setRefreshingId(null) }
+  }
+
   const filteredAccountSuggestions = accounts.filter((a) =>
     a.toLowerCase().includes(formData.account.toLowerCase()) && a !== formData.account
   )
@@ -228,11 +294,27 @@ export default function PortfolioPage() {
   return (
     <div className="space-y-6 flex-1 overflow-y-auto">
       <div className="flex items-center justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-xl md:text-2xl font-bold tracking-tight">포트폴리오</h1>
-          <p className="text-xs md:text-sm text-muted-foreground">영상 포트폴리오를 관리합니다.</p>
+          <Badge variant="outline" className="text-xs font-normal">
+            {filteredItems.length === items.length ? `${items.length}개` : `${filteredItems.length}/${items.length}개`}
+          </Badge>
         </div>
-        <Button size="sm" className="md:h-9 md:px-4 md:text-sm" onClick={openCreateDialog}><Plus />새 영상</Button>
+        <div className="flex items-center gap-2">
+          <Select value={sortOption} onValueChange={(v) => setSortOption(v as SortOption)}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <ArrowUpDown className="size-3 mr-1" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="created_desc">등록일 최신순</SelectItem>
+              <SelectItem value="created_asc">등록일 오래된순</SelectItem>
+              <SelectItem value="upload_desc">업로드일 최신순</SelectItem>
+              <SelectItem value="upload_asc">업로드일 오래된순</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="md:h-9 md:px-4 md:text-sm" onClick={openCreateDialog}><Plus />새 영상</Button>
+        </div>
       </div>
 
       {members.length > 0 && (() => {
@@ -319,6 +401,9 @@ export default function PortfolioPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openEditDialog(item)}><Pencil />수정</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => window.open(item.video_url, '_blank')}><ExternalLink />URL 열기</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleRefreshMetadata(item)} disabled={refreshingId === item.id}>
+                          <RefreshCw className={refreshingId === item.id ? 'animate-spin' : ''} />메타데이터 갱신
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(item.id)}><Trash2 />삭제</DropdownMenuItem>
                       </DropdownMenuContent>
@@ -326,6 +411,22 @@ export default function PortfolioPage() {
                   )}
                 </div>
                 {item.description && <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>}
+                {(item.upload_date || item.view_count != null) && (
+                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                    {item.upload_date && (
+                      <span className="flex items-center gap-1">
+                        <Calendar className="size-3" />
+                        {new Date(item.upload_date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                    {item.view_count != null && (
+                      <span className="flex items-center gap-1">
+                        <Eye className="size-3" />
+                        {formatViewCount(item.view_count)}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {item.tags && item.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {item.tags.map((tag) => (

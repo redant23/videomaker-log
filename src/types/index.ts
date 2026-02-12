@@ -35,10 +35,13 @@ export type Resource = {
   profiles?: Profile
 }
 
+export type ChecklistItem = { text: string; checked: boolean }
+
 export type Task = {
   id: string
   title: string
   description: string | null
+  checklist: ChecklistItem[]
   status: 'todo' | 'in_progress' | 'done'
   priority: 'low' | 'medium' | 'high'
   assignee_id: string | null
@@ -60,6 +63,8 @@ export type PortfolioItem = {
   thumbnail_url: string | null
   tags: string[]
   account: string | null
+  upload_date: string | null
+  view_count: number | null
   created_by: string
   created_at: string
   updated_at: string

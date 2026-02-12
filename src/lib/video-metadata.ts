@@ -4,6 +4,8 @@ export type VideoMeta = {
   tags: string[]
   account: string
   thumbnail_url: string
+  upload_date: string
+  view_count: number | null
 }
 
 export async function fetchVideoMetadata(url: string): Promise<VideoMeta | null> {
@@ -19,6 +21,8 @@ export async function fetchVideoMetadata(url: string): Promise<VideoMeta | null>
           tags: Array.isArray(data.tags) ? data.tags : [],
           account: data.account || '',
           thumbnail_url: data.image || '',
+          upload_date: data.upload_date || '',
+          view_count: data.view_count ?? null,
         }
       }
     }
@@ -36,6 +40,8 @@ export async function fetchVideoMetadata(url: string): Promise<VideoMeta | null>
           tags: [],
           account: data.author_name || '',
           thumbnail_url: data.thumbnail_url || '',
+          upload_date: '',
+          view_count: null,
         }
       }
     }

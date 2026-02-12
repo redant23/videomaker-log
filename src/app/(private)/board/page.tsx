@@ -13,7 +13,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Pencil, Trash2, Kanban, Archive, RotateCcw, ChevronDown, Crown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Kanban, Archive, RotateCcw, ChevronDown, Crown, Square, CheckSquare, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format, getWeek } from 'date-fns'
@@ -47,10 +47,10 @@ import {
 } from '@/components/ui/collapsible'
 
 import { createClient } from '@/lib/supabase/client'
-import { getTasks, createTask, updateTask, updateTaskStatus, deleteTask } from '@/actions/board'
+import { getTasks, createTask, updateTask, updateTaskStatus, deleteTask, updateTaskChecklist } from '@/actions/board'
 import { archiveCompletedTasks, getArchivedTasks, restoreTask } from '@/actions/board-archive'
 import { BOARD_COLUMNS } from '@/lib/constants'
-import type { Task, TaskStatus, TaskPriority } from '@/types'
+import type { Task, TaskStatus, TaskPriority, ChecklistItem } from '@/types'
 import { TASK_PRIORITY_LABELS } from '@/types'
 import { getUserColor } from '@/lib/colors'
 
@@ -85,17 +85,22 @@ function TaskCardContent({
   task,
   onEdit,
   onDelete,
+  onChecklistToggle,
   showActions = true,
 }: {
   task: Task
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
+  onChecklistToggle?: (task: Task, index: number) => void
   showActions?: boolean
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const authorName = task.profiles?.display_name ?? '알 수 없음'
   const authorInitials = authorName.slice(0, 1).toUpperCase()
   const userColor = getUserColor(task.profiles?.id || task.created_by, task.profiles)
+  const checklist = task.checklist || []
+  const checkedCount = checklist.filter((item) => item.checked).length
+  const totalCount = checklist.length
 
   return (
     <Card
@@ -106,7 +111,17 @@ function TaskCardContent({
 
       <CardHeader className="pl-4 pr-3 py-0 mb-[-4px]">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-sm font-medium leading-none mt-1.5">{task.title}</CardTitle>
+          <div className="flex items-center gap-1.5 min-w-0 mt-1.5">
+            <Badge variant={PRIORITY_VARIANT[task.priority]} className="h-4.5 px-1.5 text-[10px] shrink-0">
+              {TASK_PRIORITY_LABELS[task.priority]}
+            </Badge>
+            <CardTitle className="text-sm font-medium leading-none truncate">{task.title}</CardTitle>
+            {totalCount > 0 && (
+              <span className={cn("text-[10px] shrink-0 font-mono", checkedCount === totalCount ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
+                [{checkedCount}/{totalCount}]
+              </span>
+            )}
+          </div>
           {showActions && (
             <div className="flex shrink-0 gap-0.5" onClick={(e) => e.stopPropagation()}>
               <Button variant="ghost" size="icon" className="size-6" onClick={(e) => { e.stopPropagation(); onEdit(task) }}>
@@ -120,7 +135,7 @@ function TaskCardContent({
         </div>
       </CardHeader>
 
-      {task.description && (
+      {(task.description || checklist.length > 0) && (
         <div className="mx-3 border-t border-black/[0.05] dark:border-white/10" />
       )}
 
@@ -130,10 +145,30 @@ function TaskCardContent({
             {task.description}
           </p>
         )}
+        {checklist.length > 0 && (
+          <div className={`mt-1 mb-1.5 space-y-0.5 ${isExpanded ? '' : 'max-h-[60px] overflow-hidden'}`}>
+            {checklist.map((item, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className="flex items-center gap-1.5 w-full text-left group/check"
+                onClick={(e) => { e.stopPropagation(); onChecklistToggle?.(task, idx) }}
+              >
+                {item.checked
+                  ? <CheckSquare className="size-3 text-emerald-500 shrink-0" />
+                  : <Square className="size-3 text-muted-foreground shrink-0 group-hover/check:text-foreground" />
+                }
+                <span className={cn("text-[11px] leading-relaxed truncate", item.checked && "line-through text-muted-foreground")}>
+                  {item.text}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2">
-          <Badge variant={PRIORITY_VARIANT[task.priority]} className="h-4.5 px-1.5 text-[10px]">
-            {TASK_PRIORITY_LABELS[task.priority]}
-          </Badge>
+          <span className="text-muted-foreground text-[10px]">
+            {format(new Date(task.created_at), 'M/d')}
+          </span>
           <div className="flex items-center gap-1">
             <Avatar size="sm" className="size-4">
               <AvatarFallback
@@ -158,11 +193,13 @@ function DraggableTaskCard({
   task,
   onEdit,
   onDelete,
+  onChecklistToggle,
   canModify,
 }: {
   task: Task
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
+  onChecklistToggle: (task: Task, index: number) => void
   canModify: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -177,7 +214,7 @@ function DraggableTaskCard({
 
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="relative cursor-grab active:cursor-grabbing">
-      <TaskCardContent task={task} onEdit={onEdit} onDelete={onDelete} showActions={canModify} />
+      <TaskCardContent task={task} onEdit={onEdit} onDelete={onDelete} onChecklistToggle={onChecklistToggle} showActions={canModify} />
     </div>
   )
 }
@@ -187,12 +224,14 @@ function DroppableColumn({
   tasks,
   onEdit,
   onDelete,
+  onChecklistToggle,
   canModify,
 }: {
   column: (typeof BOARD_COLUMNS)[number]
   tasks: Task[]
   onEdit: (task: Task) => void
   onDelete: (id: string) => void
+  onChecklistToggle: (task: Task, index: number) => void
   canModify: (task: Task) => boolean
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id, data: { status: column.id } })
@@ -213,7 +252,7 @@ function DroppableColumn({
       <div className="flex-1">
         <div className="flex flex-col gap-2">
           {tasks.map((task) => (
-            <DraggableTaskCard key={task.id} task={task} onEdit={onEdit} onDelete={onDelete} canModify={canModify(task)} />
+            <DraggableTaskCard key={task.id} task={task} onEdit={onEdit} onDelete={onDelete} onChecklistToggle={onChecklistToggle} canModify={canModify(task)} />
           ))}
         </div>
       </div>
@@ -227,21 +266,34 @@ function TaskDialog({ open, onOpenChange, task, defaultStatus, onSave }: {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([])
+  const [newCheckItem, setNewCheckItem] = useState('')
   const [saving, setSaving] = useState(false)
   const isEditing = !!task
 
   useEffect(() => {
-    if (task) { setTitle(task.title); setDescription(task.description ?? ''); setPriority(task.priority) }
-    else { setTitle(''); setDescription(''); setPriority('medium') }
+    if (task) { setTitle(task.title); setDescription(task.description ?? ''); setPriority(task.priority); setChecklist(task.checklist || []) }
+    else { setTitle(''); setDescription(''); setPriority('medium'); setChecklist([]) }
+    setNewCheckItem('')
   }, [task, open])
+
+  function addCheckItem() {
+    if (!newCheckItem.trim()) return
+    setChecklist([...checklist, { text: newCheckItem.trim(), checked: false }])
+    setNewCheckItem('')
+  }
+
+  function removeCheckItem(index: number) {
+    setChecklist(checklist.filter((_, i) => i !== index))
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
     setSaving(true)
     try {
-      if (isEditing) { await updateTask(task.id, { title, description, priority }); toast.success('작업이 수정되었습니다.') }
-      else { await createTask({ title, description, priority }); toast.success('작업이 생성되었습니다.') }
+      if (isEditing) { await updateTask(task.id, { title, description, priority, checklist }); toast.success('작업이 수정되었습니다.') }
+      else { await createTask({ title, description, priority, checklist }); toast.success('작업이 생성되었습니다.') }
       onSave(); onOpenChange(false)
     } catch (err) { console.error('작업 저장 실패:', err); toast.error(isEditing ? '작업 수정에 실패했습니다.' : '작업 생성에 실패했습니다.') }
     finally { setSaving(false) }
@@ -254,6 +306,35 @@ function TaskDialog({ open, onOpenChange, task, defaultStatus, onSave }: {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2"><Label htmlFor="title">제목</Label><Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="작업 제목을 입력하세요" required /></div>
           <div className="flex flex-col gap-2"><Label htmlFor="description">설명</Label><Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="작업 설명을 입력하세요 (선택)" rows={3} /></div>
+          <div className="flex flex-col gap-2">
+            <Label>체크리스트</Label>
+            {checklist.length > 0 && (
+              <div className="space-y-1">
+                {checklist.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm">
+                    <button type="button" onClick={() => setChecklist(checklist.map((c, i) => i === idx ? { ...c, checked: !c.checked } : c))}>
+                      {item.checked ? <CheckSquare className="size-4 text-emerald-500" /> : <Square className="size-4 text-muted-foreground" />}
+                    </button>
+                    <span className={cn("flex-1 truncate", item.checked && "line-through text-muted-foreground")}>{item.text}</span>
+                    <button type="button" onClick={() => removeCheckItem(idx)} className="text-muted-foreground hover:text-destructive">
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={newCheckItem}
+                onChange={(e) => setNewCheckItem(e.target.value)}
+                placeholder="항목 추가..."
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCheckItem() } }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={addCheckItem} disabled={!newCheckItem.trim()}>
+                <Plus className="size-4" />
+              </Button>
+            </div>
+          </div>
           <div className="flex flex-col gap-2">
             <Label>우선순위</Label>
             <Select value={priority} onValueChange={(v) => setPriority(v as TaskPriority)}>
@@ -373,6 +454,14 @@ export default function BoardPage() {
     catch (err) { console.error('상태 변경 실패:', err); toast.error('상태 변경에 실패했습니다.'); await fetchTasks() }
   }
 
+  async function handleChecklistToggle(task: Task, index: number) {
+    const checklist = [...(task.checklist || [])]
+    checklist[index] = { ...checklist[index], checked: !checklist[index].checked }
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, checklist } : t))
+    try { await updateTaskChecklist(task.id, checklist) }
+    catch (err) { console.error('체크리스트 업데이트 실패:', err); await fetchTasks() }
+  }
+
   function handleAdd(status: TaskStatus) { setEditingTask(null); setDefaultStatus(status); setTaskDialogOpen(true) }
   function handleEdit(task: Task) { setEditingTask(task); setTaskDialogOpen(true) }
   function handleDeleteClick(id: string) { setDeletingTaskId(id); setDeleteDialogOpen(true) }
@@ -425,7 +514,7 @@ export default function BoardPage() {
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="grid grid-cols-1 gap-4 items-start md:grid-cols-3">
           {BOARD_COLUMNS.map((column) => (
-            <DroppableColumn key={column.id} column={column} tasks={tasksByStatus[column.id] ?? []} onEdit={handleEdit} onDelete={handleDeleteClick} canModify={canModify} />
+            <DroppableColumn key={column.id} column={column} tasks={tasksByStatus[column.id] ?? []} onEdit={handleEdit} onDelete={handleDeleteClick} onChecklistToggle={handleChecklistToggle} canModify={canModify} />
           ))}
         </div>
         <DragOverlay>

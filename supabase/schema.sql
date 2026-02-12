@@ -79,6 +79,7 @@ CREATE TABLE public.tasks (
   position INTEGER NOT NULL DEFAULT 0,
   archived_at TIMESTAMPTZ,
   created_by UUID NOT NULL REFERENCES public.profiles(id),
+  checklist JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -99,6 +100,8 @@ CREATE TABLE public.portfolio_items (
   thumbnail_url TEXT,
   tags TEXT[] NOT NULL DEFAULT '{}',
   account TEXT,
+  upload_date TEXT,
+  view_count INTEGER,
   created_by UUID NOT NULL REFERENCES public.profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -148,6 +151,13 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON public.portfolio_items FOR EACH R
 -- CREATE POLICY "Public can view all" ON public.portfolio_items FOR SELECT TO anon USING (true);
 -- DROP INDEX idx_portfolio_public;
 -- UPDATE public.profiles SET role = 'master' WHERE id = (SELECT id FROM auth.users WHERE email = 'redant23ai@gmail.com');
+
+-- Board: checklist column
+-- ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]';
+
+-- Portfolio: upload_date, view_count columns
+-- ALTER TABLE public.portfolio_items ADD COLUMN IF NOT EXISTS upload_date TEXT;
+-- ALTER TABLE public.portfolio_items ADD COLUMN IF NOT EXISTS view_count INTEGER;
 
 -- Email column migration (for @mention email notifications):
 -- ALTER TABLE public.profiles ADD COLUMN email TEXT;

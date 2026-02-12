@@ -9,6 +9,8 @@ type VideoMetadata = {
   url: string
   tags: string[]
   account: string
+  upload_date: string
+  view_count: number | null
 }
 
 function extractYouTubeData(html: string): VideoMetadata | null {
@@ -19,7 +21,10 @@ function extractYouTubeData(html: string): VideoMetadata | null {
     if (playerMatch) {
       const data = JSON.parse(playerMatch[1])
       const videoDetails = data?.videoDetails
+      const microformat = data?.microformat?.playerMicroformatRenderer
       if (videoDetails) {
+        const publishDate = microformat?.publishDate || videoDetails.publishDate || ''
+        const viewCount = videoDetails.viewCount ? parseInt(videoDetails.viewCount, 10) : null
         return {
           title: videoDetails.title || '',
           description: videoDetails.shortDescription || '',
@@ -28,6 +33,8 @@ function extractYouTubeData(html: string): VideoMetadata | null {
           url: `https://www.youtube.com/watch?v=${videoDetails.videoId}`,
           tags: videoDetails.keywords || [],
           account: videoDetails.author || '',
+          upload_date: publishDate,
+          view_count: isNaN(viewCount as number) ? null : viewCount,
         }
       }
     }
@@ -64,6 +71,8 @@ function extractYouTubeData(html: string): VideoMetadata | null {
           url: '',
           tags,
           account: channel,
+          upload_date: '',
+          view_count: null,
         }
       }
     }
@@ -113,6 +122,8 @@ async function fetchInstagramData(url: string): Promise<VideoMetadata | null> {
       url,
       tags,
       account: data.author_name || '',
+      upload_date: '',
+      view_count: null,
     }
   } catch {
     return null
@@ -182,10 +193,12 @@ export async function GET(request: NextRequest) {
       url: $('meta[property="og:url"]').attr('content') || url,
       tags: allTags,
       account: '',
+      upload_date: '',
+      view_count: null,
     }
 
     return NextResponse.json(metadata)
   } catch {
-    return NextResponse.json({ title: '', description: '', image: '', siteName: '', url, tags: [], account: '' }, { status: 200 })
+    return NextResponse.json({ title: '', description: '', image: '', siteName: '', url, tags: [], account: '', upload_date: '', view_count: null }, { status: 200 })
   }
 }

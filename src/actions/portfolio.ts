@@ -72,6 +72,8 @@ export async function createPortfolioItem(formData: {
   account?: string
   created_by?: string
   thumbnail_url?: string
+  upload_date?: string
+  view_count?: number
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -91,6 +93,8 @@ export async function createPortfolioItem(formData: {
     thumbnail_url,
     tags: formData.tags,
     account: formData.account || null,
+    upload_date: formData.upload_date || null,
+    view_count: formData.view_count ?? null,
     created_by: formData.created_by || user.id,
   })
 
@@ -106,6 +110,8 @@ export async function updatePortfolioItem(id: string, formData: {
   account?: string
   thumbnail_url?: string
   created_by?: string
+  upload_date?: string
+  view_count?: number
 }) {
   const supabase = await createClient()
   const { video_type, video_id } = extractVideoInfo(formData.video_url)
@@ -126,6 +132,32 @@ export async function updatePortfolioItem(id: string, formData: {
   if (formData.created_by) {
     updateData.created_by = formData.created_by
   }
+  if (formData.upload_date !== undefined) {
+    updateData.upload_date = formData.upload_date || null
+  }
+  if (formData.view_count !== undefined) {
+    updateData.view_count = formData.view_count ?? null
+  }
+
+  const { error } = await supabase
+    .from('portfolio_items')
+    .update(updateData)
+    .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/portfolio')
+}
+
+export async function refreshPortfolioMetadata(id: string, metadata: {
+  upload_date?: string
+  view_count?: number
+  thumbnail_url?: string
+}) {
+  const supabase = await createClient()
+  const updateData: Record<string, unknown> = {}
+  if (metadata.upload_date !== undefined) updateData.upload_date = metadata.upload_date || null
+  if (metadata.view_count !== undefined) updateData.view_count = metadata.view_count ?? null
+  if (metadata.thumbnail_url) updateData.thumbnail_url = metadata.thumbnail_url
 
   const { error } = await supabase
     .from('portfolio_items')

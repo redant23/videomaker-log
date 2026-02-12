@@ -28,6 +28,7 @@ export async function createTask(formData: {
   description?: string
   priority?: string
   assignee_id?: string
+  checklist?: { text: string; checked: boolean }[]
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -47,6 +48,7 @@ export async function createTask(formData: {
     description: formData.description || null,
     priority: formData.priority || 'medium',
     assignee_id: formData.assignee_id || null,
+    checklist: formData.checklist || [],
     status: 'todo',
     position: (maxPos?.position ?? -1) + 1,
     created_by: user.id,
@@ -61,11 +63,23 @@ export async function updateTask(id: string, formData: {
   description?: string
   priority?: string
   assignee_id?: string | null
+  checklist?: { text: string; checked: boolean }[]
 }) {
   const supabase = await createClient()
   const { error } = await supabase
     .from('tasks')
     .update(formData)
+    .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/board')
+}
+
+export async function updateTaskChecklist(id: string, checklist: { text: string; checked: boolean }[]) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('tasks')
+    .update({ checklist })
     .eq('id', id)
 
   if (error) throw error
