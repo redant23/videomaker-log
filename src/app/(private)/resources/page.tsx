@@ -18,6 +18,7 @@ import { OgPreviewCard } from '@/components/og-preview-card'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -62,7 +63,7 @@ export default function ResourcesPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showArchive, setShowArchive] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   // 멘션 자동완성 상태
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -184,7 +185,7 @@ export default function ResourcesPage() {
   }, [members, currentUserId, currentUserName])
 
   // 멘션 입력 핸들러
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
     const cursorPos = e.target.selectionStart ?? newValue.length
     setContent(newValue)
@@ -230,25 +231,36 @@ export default function ResourcesPage() {
     }, 0)
   }
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSuggestions) return
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return
 
-    if (e.key === 'ArrowDown') {
+    if (showSuggestions) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setSelectedIndex((prev) => (prev + 1) % filteredMembers.length)
+        return
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length)
+        return
+      } else if (e.key === 'Enter' && filteredMembers[selectedIndex]) {
+        e.preventDefault()
+        insertMention(filteredMembers[selectedIndex])
+        return
+      } else if (e.key === 'Escape') {
+        setShowSuggestions(false)
+        return
+      }
+    }
+
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      setSelectedIndex((prev) => (prev + 1) % filteredMembers.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setSelectedIndex((prev) => (prev - 1 + filteredMembers.length) % filteredMembers.length)
-    } else if (e.key === 'Enter' && filteredMembers[selectedIndex]) {
-      e.preventDefault()
-      insertMention(filteredMembers[selectedIndex])
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false)
+      handleSubmit()
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     if (showSuggestions) return // 멘션 선택 중이면 전송 방지
     const trimmedContent = content.trim()
     if (!trimmedContent) return
@@ -261,6 +273,9 @@ export default function ResourcesPage() {
       // 멘션 알림 발송
       await sendMentionNotifications(trimmedContent)
       setContent('')
+      if (inputRef.current) {
+        inputRef.current.style.height = '36px'
+      }
       await refreshMessages()
     } catch (err) {
       console.error('메시지 등록 실패:', err)
@@ -512,13 +527,18 @@ export default function ResourcesPage() {
                 })}
               </div>
             )}
-            <Input
+            <Textarea
               ref={inputRef}
               placeholder="리소스를 공유해보세요... (@로 팀원 멘션)"
               value={content}
-              onChange={handleInputChange}
+              onChange={(e) => {
+                e.target.style.height = '36px'
+                e.target.style.height = `${e.target.scrollHeight}px`
+                handleInputChange(e)
+              }}
               onKeyDown={handleInputKeyDown}
-              className="h-9 text-sm"
+              className="min-h-[36px] h-[36px] max-h-32 text-sm resize-none py-1.5 scrollbar-hide"
+              rows={1}
             />
             <Button
               type="submit"
